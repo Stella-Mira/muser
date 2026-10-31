@@ -437,6 +437,9 @@ impl Playable for SfzSampler {
         self.sampler.handle_event(&midi_event(message));
     }
     fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
+        // 流式读的采样：先等磁盘读够（渲染比实时快；不等就会断音），结果与整个读进内存一样。
+        // 渲染与播放都在自己的线程里算，不在声卡回调里，可以等。
+        self._shared.instrument.wait_for_streams(std::time::Duration::from_secs(10));
         Processor::process(&mut self.sampler, buffer);
     }
     fn set_tuning(&mut self, tuning: &manguebyte::dsp::Tuning) {

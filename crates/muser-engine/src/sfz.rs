@@ -96,6 +96,15 @@ fn parse(path: &Path) -> Result<(Sfz, MuserSource), String> {
     Ok((sfz, source))
 }
 
+/// 采样文件合计超过这个大小（磁盘上）就流式读：整个解码进内存会占到它的几倍。
+const STREAM_ABOVE_BYTES: u64 = 1 << 30;
+
+/// 音色用到的采样文件在磁盘上合计多大（每个文件算一次）。
+fn sample_bytes(sfz: &Sfz, root: &Path) -> u64 {
+    let files: std::collections::BTreeSet<&str> = sfz.regions.iter().map(|r| &*r.sample).collect();
+    files.iter().filter_map(|f| std::fs::metadata(root.join(f.replace('\\', "/"))).ok()).map(|m| m.len()).sum()
+}
+
 /// `sample=*noise`（白噪声发生器，上游采样器没有）换成的虚拟文件：读到时返回内存里生成的噪声。
 const NOISE_FILE: &str = "__muser_noise__.wav";
 
@@ -388,6 +397,11 @@ fn split_by_velocity(regions: &mut Vec<manguebyte::sampler::Region>, handled: &m
 
 /// 按控制器值展开后加载乐器。返回 (乐器, 去掉的区域数, 不支持的内容)。
 pub fn load(path: &Path, opts: &Options) -> Result<(Instrument, usize, BTreeMap<String, usize>), String> {
+    load_with(path, opts, STREAM_ABOVE_BYTES)
+}
+
+/// 同 [`load`]；采样文件合计超过 `stream_above` 字节时流式读。
+fn load_with(path: &Path, opts: &Options, stream_above: u64) -> Result<(Instrument, usize, BTreeMap<String, usize>), String> {
     let overrides = &opts.cc;
     let (mut sfz, mut source) = parse(path)?;
     // 键位切换：选定奏法，去掉其它奏法的区域。
@@ -542,7 +556,16 @@ pub fn load(path: &Path, opts: &Options) -> Result<(Instrument, usize, BTreeMap<
         };
         *warnings.entry(k).or_default() += 1;
     }
-    let inst = Instrument::load(&sfz, &mut source).map_err(|e| format!("加载 SFZ '{}' 失败: {e}", path.display()))?;
+    // 很大的音色库从磁盘流式读：内存里只留每个采样的开头与循环段，其余边演奏边读，声音与整个读进来一样。
+    // 代价是渲染慢几倍（每个音都要从磁盘解码），所以只在采样文件合计超过 STREAM_ABOVE_BYTES 时用。
+    // `*noise` 是 muser 在内存里给的虚拟文件，磁盘上没有：这样的音色整个读进来。
+    let root = path.parent().unwrap_or(Path::new(""));
+    let inst = if !sfz.regions.iter().any(|r| &*r.sample == NOISE_FILE) && sample_bytes(&sfz, root) > stream_above {
+        Instrument::load_streaming(&sfz, root, &manguebyte::sampler::StreamOptions::new())
+    } else {
+        Instrument::load(&sfz, &mut source)
+    }
+    .map_err(|e| format!("加载 SFZ '{}' 失败: {e}", path.display()))?;
     Ok((inst, dropped, warnings))
 }
 
@@ -575,6 +598,39 @@ mod tests {
         let noise: Vec<_> = sfz.regions.iter().filter(|r| r.sample.ends_with(NOISE_FILE)).collect();
         assert!(noise.iter().all(|r| r.amp_veltrack == 0.0) && noise.len() > 10);
         assert!(load(&path, &Options::default()).is_ok(), "噪声区域能载入");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// 流式读与整个读进来，渲染出来一样（每块之前等磁盘读够）。
+    #[test]
+    fn streaming_plays_like_loading_whole() {
+        use manguebyte::prelude::{AudioBuffer, NoteRef, ProcessSpec, Processor};
+        let dir = std::env::temp_dir().join(format!("muser-sfzstream-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("n.wav"), noise_wav()).unwrap();
+        let path = dir.join("x.sfz");
+        std::fs::write(&path, "<region> sample=n.wav loop_mode=no_loop pitch_keycenter=60").unwrap();
+        let play = |inst: Instrument| -> Vec<f32> {
+            let (mut s, _loader) = manguebyte::sampler::Sampler::with_instrument(inst.clone(), 8);
+            s.prepare(&ProcessSpec { sample_rate: 48_000.0, max_block_size: 512, num_channels: 2 });
+            s.note_on(NoteRef::new(0, 60), 0.8);
+            s.note_on(NoteRef::new(0, 67), 0.6);
+            let mut out = Vec::new();
+            let mut b = AudioBuffer::<f32>::new(2, 512);
+            // 6 秒：超过流式读时内存里留的开头（65 536 帧）。
+            for _ in 0..(6 * 48_000 / 512) {
+                inst.wait_for_streams(std::time::Duration::from_secs(10));
+                s.process(&mut b);
+                out.extend_from_slice(b.channel(0));
+            }
+            out
+        };
+        let (whole, ..) = load_with(&path, &Options::default(), u64::MAX).unwrap();
+        let (streamed, ..) = load_with(&path, &Options::default(), 0).unwrap();
+        assert!(!whole.is_streaming() && streamed.is_streaming());
+        let (a, b) = (play(whole), play(streamed));
+        assert!(a.iter().any(|x| x.abs() > 1e-3));
+        assert_eq!(a, b);
         std::fs::remove_dir_all(&dir).ok();
     }
 
