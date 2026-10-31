@@ -5,7 +5,7 @@
   "tracks": [
     {
       "name": "drums",
-      "instrument": "drums.lofi",
+      "instrument": "drums.lofi", "gain_db": -12.2,
       "clips": [
         {
           "start": 0.0,
@@ -90,7 +90,7 @@
     {
       "name": "keys",
       "instrument": "synth.poly",
-      "gain_db": -4.0,
+      "gain_db": 0.7,
       "clips": [
         {
           "start": 0.0,

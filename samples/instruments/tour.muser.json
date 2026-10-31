@@ -18,7 +18,7 @@
     {
       "name": "guitar.nylon",
       "instrument": "guitar.nylon",
-      "gain_db": -4.0,
+      "gain_db": -5.1,
       "clips": [
         {
           "start": 0.0,
@@ -73,7 +73,7 @@
     {
       "name": "guitar.steel",
       "instrument": "guitar.steel",
-      "gain_db": -4.0,
+      "gain_db": -15,
       "clips": [
         {
           "start": 4.0,
@@ -128,7 +128,7 @@
     {
       "name": "bass.finger",
       "instrument": "bass.finger",
-      "gain_db": -4.0,
+      "gain_db": -2.6,
       "clips": [
         {
           "start": 8.0,
@@ -183,7 +183,7 @@
     {
       "name": "bass.acid",
       "instrument": "bass.acid",
-      "gain_db": -4.0,
+      "gain_db": -6,
       "clips": [
         {
           "start": 12.0,
@@ -231,7 +231,7 @@
     {
       "name": "organ.jazz",
       "instrument": "organ.jazz",
-      "gain_db": -4.0,
+      "gain_db": -10.7,
       "clips": [
         {
           "start": 16.0,
@@ -262,7 +262,7 @@
     {
       "name": "mallet.marimba",
       "instrument": "mallet.marimba",
-      "gain_db": -4.0,
+      "gain_db": -6.5,
       "clips": [
         {
           "start": 20.0,
@@ -317,7 +317,7 @@
     {
       "name": "mallet.vibraphone",
       "instrument": "mallet.vibraphone",
-      "gain_db": -4.0,
+      "gain_db": -8.1,
       "clips": [
         {
           "start": 24.0,
@@ -372,7 +372,7 @@
     {
       "name": "mallet.kalimba",
       "instrument": "mallet.kalimba",
-      "gain_db": -4.0,
+      "gain_db": -5.2,
       "clips": [
         {
           "start": 28.0,
@@ -427,7 +427,7 @@
     {
       "name": "strings.cello",
       "instrument": "strings.cello",
-      "gain_db": -4.0,
+      "gain_db": -15.8,
       "clips": [
         {
           "start": 32.0,
@@ -482,7 +482,7 @@
     {
       "name": "strings.ensemble",
       "instrument": "strings.ensemble",
-      "gain_db": -4.0,
+      "gain_db": -15,
       "clips": [
         {
           "start": 36.0,
@@ -513,7 +513,7 @@
     {
       "name": "strings.violin_pizz",
       "instrument": "strings.violin_pizz",
-      "gain_db": -4.0,
+      "gain_db": -29,
       "clips": [
         {
           "start": 40.0,
@@ -568,7 +568,7 @@
     {
       "name": "wind.flute",
       "instrument": "wind.flute",
-      "gain_db": -4.0,
+      "gain_db": -6.8,
       "clips": [
         {
           "start": 44.0,
@@ -623,7 +623,7 @@
     {
       "name": "wind.sax",
       "instrument": "wind.sax",
-      "gain_db": -4.0,
+      "gain_db": -6.9,
       "clips": [
         {
           "start": 48.0,
@@ -678,7 +678,7 @@
     {
       "name": "wind.trumpet",
       "instrument": "wind.trumpet",
-      "gain_db": -4.0,
+      "gain_db": -7.4,
       "clips": [
         {
           "start": 52.0,
@@ -733,7 +733,7 @@
     {
       "name": "choir.aah",
       "instrument": "choir.aah",
-      "gain_db": -4.0,
+      "gain_db": -6,
       "clips": [
         {
           "start": 56.0,
@@ -764,7 +764,7 @@
     {
       "name": "poly.moog_bass",
       "instrument": "poly.moog_bass",
-      "gain_db": -4.0,
+      "gain_db": -7,
       "clips": [
         {
           "start": 60.0,
@@ -819,7 +819,7 @@
     {
       "name": "poly.trance_supersaw",
       "instrument": "poly.trance_supersaw",
-      "gain_db": -4.0,
+      "gain_db": -2.3,
       "clips": [
         {
           "start": 64.0,
@@ -874,7 +874,7 @@
     {
       "name": "poly.warm_analog_pad",
       "instrument": "poly.warm_analog_pad",
-      "gain_db": -4.0,
+      "gain_db": -3.5,
       "clips": [
         {
           "start": 68.0,
@@ -905,7 +905,7 @@
     {
       "name": "poly.juno_keys",
       "instrument": "poly.juno_keys",
-      "gain_db": -4.0,
+      "gain_db": -3,
       "clips": [
         {
           "start": 72.0,
@@ -936,7 +936,7 @@
     {
       "name": "poly.bell_pluck",
       "instrument": "poly.bell_pluck",
-      "gain_db": -4.0,
+      "gain_db": -0.3,
       "clips": [
         {
           "start": 76.0,

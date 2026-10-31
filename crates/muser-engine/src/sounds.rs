@@ -17,7 +17,7 @@ use crate::audition::{analyze, Analysis};
 use crate::{render, RenderSettings};
 
 /// 探测方法有变化时加一，旧缓存作废。
-const PROBE_VERSION: u32 = 6;
+const PROBE_VERSION: u32 = 7;
 
 /// 目录里的一个音色。
 #[derive(Debug, Clone, Serialize)]
@@ -114,6 +114,9 @@ pub struct Card {
     pub summary: String,
     /// 逐项描述。
     pub traits: Vec<String>,
+    /// 参考乐句（[`crate::levels::phrase`]）的响度：和内置乐器的校准值比，就知道 gain_db 从哪起调。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub level_lufs: Option<f64>,
     pub probe_version: u32,
 }
 
@@ -219,8 +222,19 @@ pub fn describe(spec: &str, params: &serde_json::Map<String, Value>, drums: Opti
             detected_pitch: if drums { None } else { detect_pitch(&seg, sr, hold_frames) },
         });
     }
-    let (summary, traits) = words(&measured, drums);
-    let card = Card { spec: spec.to_string(), params: params.clone(), drums, probes: measured, summary, traits, probe_version: PROBE_VERSION };
+    let (summary, mut traits) = words(&measured, drums);
+    // 音量：和内置乐器校准用的同一段参考乐句（内置乐器 gain_db 为 0 时都在 TARGET_LUFS 附近）。
+    let range = crate::instrument::describe(spec).map_or((48, 84), |i| i.range);
+    let level = crate::render::render_loudness(&crate::levels::phrase(spec, params, range, drums), RenderSettings { tail_seconds: 1.0, ..RenderSettings::default() }, &mut crate::render::RenderCache::new())
+        .ok()
+        .and_then(|l| l.first().and_then(|n| n.output.lufs));
+    if let Some(l) = level {
+        let d = l - crate::levels::TARGET_LUFS;
+        let how = if d.abs() < 2.0 { "和内置乐器差不多响".to_string() } else if d > 0.0 { format!("比内置乐器响 {d:.0} dB") } else { format!("比内置乐器轻 {:.0} dB", -d) };
+        traits.push(format!("音量：参考乐句 {l:.1} LUFS（内置乐器 gain_db 为 0 时约 {:.0}）→ {how}{}", crate::levels::TARGET_LUFS,
+            if d.abs() < 2.0 { String::new() } else { format!("，和内置乐器放一起时 gain_db 从 {:+.0} 起调", -d) }));
+    }
+    let card = Card { spec: spec.to_string(), params: params.clone(), drums, probes: measured, summary, traits, level_lufs: level, probe_version: PROBE_VERSION };
     let path = cache_file(spec, params);
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);

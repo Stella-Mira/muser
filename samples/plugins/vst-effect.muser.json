@@ -5,7 +5,7 @@
     {
       "name": "keys",
       "instrument": "synth.poly",
-      "gain_db": -4,
+      "gain_db": 0.7,
       "effects": [
         {
           "type": "plugin",

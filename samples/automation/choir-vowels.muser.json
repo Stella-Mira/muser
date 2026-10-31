@@ -12,7 +12,7 @@
     {
       "name": "choir",
       "instrument": "choir.aah",
-      "gain_db": 2,
+      "gain_db": 0,
       "automation": [
         {
           "target": "instrument",

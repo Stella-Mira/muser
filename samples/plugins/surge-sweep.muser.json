@@ -10,7 +10,7 @@
     {
       "name": "drums",
       "instrument": "drums.909",
-      "gain_db": -6,
+      "gain_db": -16.3,
       "clips": [
         {
           "start": 0,

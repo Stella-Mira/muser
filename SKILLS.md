@@ -464,6 +464,8 @@ muser view song.muser.json --open      # 后台运行；页面 http://127.0.0.1:
 - **重复多小节**：复制 clip 并把 `start` 后移 4 拍（第 2 小节 `start: 4.0`），或在一个长 clip 里铺满。
 - **和弦**：多个音符 `start` 相同、`pitch` 不同。C 大三 = 60/64/67，A 小三 = 57/60/64。
 - **层次**：不同角色放不同 track（鼓 / 贝斯 / 和弦 / 旋律），用 `gain_db` 平衡，用 `pan`（-1 左 ~ 1 右）分开。
+  内置乐器已按音量校准：`gain_db` 为 0 时各乐器大致一样响，所以 `gain_db` 直接表示"比别的轻/响多少"（伴奏常在 -4 到 -10）。
+  SFZ 与插件不校准：`muser sounds describe` 的"音量"一行给出它比内置乐器响/轻多少、`gain_db` 从哪起调；最后用 `muser mix-report` 核对。
 - **音量**：乐器本体音量差别很大，`gain_db` 不要凭感觉定。写完一版跑 `muser mix-report`，按角色把各轨调到目标相对响度，
   主总线最后放 `limiter`。流程与各角色目标见 [skills/mixing.md](skills/mixing.md)。
 

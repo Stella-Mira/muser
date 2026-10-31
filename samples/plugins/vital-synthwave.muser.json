@@ -25,7 +25,7 @@
   "tracks": [
     {
       "name": "kick",
-      "instrument": "drums.909",
+      "instrument": "drums.909", "gain_db": -10.3,
       "clips": [
         {
           "start": 0,
@@ -230,7 +230,7 @@
     {
       "name": "clap",
       "instrument": "drums.909",
-      "gain_db": -6,
+      "gain_db": -16.3,
       "sends": {
         "verb": -12
       },
@@ -342,7 +342,7 @@
     {
       "name": "hat",
       "instrument": "drums.909",
-      "gain_db": -13,
+      "gain_db": -23.3,
       "pan": 0.2,
       "clips": [
         {

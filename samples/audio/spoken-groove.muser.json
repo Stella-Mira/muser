@@ -268,7 +268,7 @@
     {
       "name": "click",
       "instrument": "drums.lofi",
-      "gain_db": -2,
+      "gain_db": -14.2,
       "clips": [
         {
           "start": 0,
@@ -282,7 +282,7 @@
     {
       "name": "drums",
       "instrument": "drums.lofi",
-      "gain_db": 6,
+      "gain_db": -6.2,
       "clips": [
         {
           "start": 4,
@@ -305,7 +305,7 @@
     {
       "name": "bass",
       "instrument": "bass.finger",
-      "gain_db": -5,
+      "gain_db": -3.6,
       "clips": [
         {
           "start": 4,
@@ -322,7 +322,7 @@
     {
       "name": "keys",
       "instrument": "poly.juno_keys",
-      "gain_db": -11,
+      "gain_db": -10,
       "sends": {
         "verb": -10
       },

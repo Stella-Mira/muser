@@ -4,7 +4,7 @@
   "tracks": [
     {
       "name": "kick",
-      "instrument": "drums.acoustic",
+      "instrument": "drums.acoustic", "gain_db": -14.4,
       "clips": [
         {
           "start": 0,
@@ -90,7 +90,7 @@
     {
       "name": "snare",
       "instrument": "drums.acoustic",
-      "gain_db": -2,
+      "gain_db": -16.4,
       "clips": [
         {
           "start": 0,
@@ -155,7 +155,7 @@
     {
       "name": "hats",
       "instrument": "drums.acoustic",
-      "gain_db": -8,
+      "gain_db": -22.4,
       "pan": 0.25,
       "clips": [
         {

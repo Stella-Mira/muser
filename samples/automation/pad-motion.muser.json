@@ -16,20 +16,14 @@
     {
       "name": "pad",
       "instrument": "poly.warm_analog_pad",
-      "gain_db": -4,
+      "gain_db": -3.5,
       "automation": [
         {
           "target": "gain_db",
           "shape": "points",
           "points": [
-            [
-              0,
-              -50
-            ],
-            [
-              8,
-              -4
-            ]
+            [0, -49.5],
+            [8, -3.5]
           ],
           "curve": "smooth",
           "end": 16
@@ -39,8 +33,8 @@
           "shape": "lfo",
           "wave": "square",
           "period_beats": 0.5,
-          "min": -30,
-          "max": -4,
+          "min": -29.5,
+          "max": -3.5,
           "start": 16
         },
         {

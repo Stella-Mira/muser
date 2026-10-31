@@ -38,7 +38,7 @@
   "tracks": [
     {
       "name": "kick",
-      "instrument": "drums.909",
+      "instrument": "drums.909", "gain_db": -10.3,
       "clips": [
         {
           "start": 0,
@@ -243,7 +243,7 @@
     {
       "name": "clap",
       "instrument": "drums.909",
-      "gain_db": -6,
+      "gain_db": -16.3,
       "output": "drums",
       "clips": [
         {
@@ -353,7 +353,7 @@
     {
       "name": "hat",
       "instrument": "drums.909",
-      "gain_db": -12,
+      "gain_db": -22.3,
       "output": "drums",
       "clips": [
         {
@@ -559,7 +559,7 @@
     {
       "name": "pad",
       "instrument": "poly.warm_analog_pad",
-      "gain_db": -6,
+      "gain_db": -5.5,
       "sends": {
         "verb": -8
       },
@@ -777,7 +777,7 @@
     {
       "name": "bass",
       "instrument": "poly.moog_bass",
-      "gain_db": -5,
+      "gain_db": -8,
       "clips": [
         {
           "start": 0,

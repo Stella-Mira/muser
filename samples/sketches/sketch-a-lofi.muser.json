@@ -18,7 +18,7 @@
     {
       "name": "drums",
       "instrument": "drums.lofi",
-      "gain_db": 4,
+      "gain_db": -8.2,
       "clips": [
         {
           "start": 0,
@@ -34,7 +34,7 @@
     {
       "name": "bass",
       "instrument": "bass.finger",
-      "gain_db": -6,
+      "gain_db": -4.6,
       "humanize": {
         "timing_ms": 6,
         "drift": 0.6,
@@ -57,7 +57,7 @@
     {
       "name": "chords",
       "instrument": "poly.wurly",
-      "gain_db": -13,
+      "gain_db": -10.1,
       "sends": {
         "verb": -10
       },
@@ -77,7 +77,7 @@
     {
       "name": "melody",
       "instrument": "poly.bell_pluck",
-      "gain_db": -8,
+      "gain_db": -4.3,
       "sends": {
         "verb": -8
       },

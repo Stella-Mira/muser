@@ -38,7 +38,7 @@
   "tracks": [
     {
       "name": "kick",
-      "instrument": "drums.acoustic",
+      "instrument": "drums.acoustic", "gain_db": -14.4,
       "output": "drums",
       "effects": [
         {
@@ -206,7 +206,7 @@
       "name": "snare",
       "instrument": "drums.acoustic",
       "output": "drums",
-      "gain_db": -2,
+      "gain_db": -16.4,
       "sends": {
         "room": -10
       },
@@ -328,7 +328,7 @@
       "name": "hats",
       "instrument": "drums.acoustic",
       "output": "drums",
-      "gain_db": -9,
+      "gain_db": -23.4,
       "pan": 0.25,
       "effects": [
         {
@@ -735,7 +735,7 @@
     {
       "name": "keys",
       "instrument": "poly.fm_electric_piano",
-      "gain_db": -6,
+      "gain_db": -3.8,
       "pan": -0.2,
       "sends": {
         "room": -8
@@ -1203,7 +1203,7 @@
     {
       "name": "bass",
       "instrument": "bass.finger",
-      "gain_db": -3,
+      "gain_db": -1.6,
       "effects": [
         {
           "type": "plugin",

@@ -11,7 +11,7 @@
     {
       "name": "drums",
       "instrument": "drums.house",
-      "gain_db": 0.0,
+      "gain_db": -10.5,
       "clips": [
         {
           "start": 0.0,
@@ -144,7 +144,7 @@
     {
       "name": "bass",
       "instrument": "synth.fm",
-      "gain_db": -3.0,
+      "gain_db": -8,
       "clips": [
         {
           "start": 0.0,
@@ -217,7 +217,7 @@
     {
       "name": "chords",
       "instrument": "synth.poly",
-      "gain_db": -7.0,
+      "gain_db": -2.3,
       "pan": 0.15,
       "clips": [
         {

@@ -13,6 +13,7 @@ pub mod drummer;
 pub mod effects;
 pub mod hum;
 pub mod instrument;
+pub mod levels;
 pub mod loop_library;
 pub mod midi;
 pub mod mix;
@@ -994,7 +995,7 @@ mod tests {
                 comp["sidechain"] = serde_json::json!("kick");
             }
             proj(serde_json::json!({ "tempo": 120, "tracks": [
-                { "name": "kick", "instrument": "drums.909", "muted": kick_muted,
+                { "name": "kick", "instrument": "drums.909", "gain_db": -10, "muted": kick_muted,
                   "clips": [{ "start": 0, "length": 4, "notes": (0..4).map(|b| serde_json::json!({ "pitch": 36, "start": b, "length": 0.1 })).collect::<Vec<_>>() }] },
                 { "name": "pad", "instrument": "synth.poly", "gain_db": -12, "effects": if sidechain { vec![comp] } else { vec![] },
                   "clips": [{ "start": 0, "length": 4, "notes": [{ "pitch": 60, "start": 0, "length": 4 }] }] } ] }))

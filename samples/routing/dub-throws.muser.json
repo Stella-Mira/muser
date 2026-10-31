@@ -64,7 +64,7 @@
   "tracks": [
     {
       "name": "kick",
-      "instrument": "drums.lofi",
+      "instrument": "drums.lofi", "gain_db": -12.2,
       "output": "rhythm",
       "clips": [
         {
@@ -175,7 +175,7 @@
       "name": "snare",
       "instrument": "drums.lofi",
       "output": "rhythm",
-      "gain_db": -2,
+      "gain_db": -14.2,
       "sends": {
         "echo": -40
       },
@@ -365,7 +365,7 @@
       "name": "hat",
       "instrument": "drums.lofi",
       "output": "rhythm",
-      "gain_db": -10,
+      "gain_db": -22.2,
       "clips": [
         {
           "start": 0,
@@ -762,7 +762,7 @@
     {
       "name": "skank",
       "instrument": "poly.juno_keys",
-      "gain_db": -9,
+      "gain_db": -8,
       "pan": 0.2,
       "sends": {
         "echo": -14,
@@ -1363,7 +1363,7 @@
     {
       "name": "bass",
       "instrument": "bass.finger",
-      "gain_db": -2,
+      "gain_db": -0.6,
       "clips": [
         {
           "start": 0,

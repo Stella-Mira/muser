@@ -17,7 +17,7 @@
     {
       "name": "melody",
       "instrument": "poly.juno_keys",
-      "gain_db": -1,
+      "gain_db": 0,
       "sends": {
         "verb": -10
       },
@@ -36,7 +36,7 @@
     {
       "name": "chords",
       "instrument": "poly.warm_analog_pad",
-      "gain_db": -13,
+      "gain_db": -12.5,
       "sends": {
         "verb": -8
       },
@@ -51,7 +51,7 @@
     {
       "name": "bass",
       "instrument": "bass.finger",
-      "gain_db": -3,
+      "gain_db": -1.6,
       "humanize": {
         "timing_ms": 5
       },

@@ -66,7 +66,7 @@
         "tone": 2500,
         "pressure": 0.85
       },
-      "gain_db": 12.0
+      "gain_db": 0.2
     }
   ]
 }

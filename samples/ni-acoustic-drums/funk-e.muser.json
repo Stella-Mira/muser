@@ -135,7 +135,7 @@
     {
       "name": "bass",
       "instrument": "bass.slap",
-      "gain_db": -4,
+      "gain_db": -6.8,
       "humanize": {
         "timing_ms": 4,
         "velocity": 0.08
@@ -161,7 +161,7 @@
     {
       "name": "clav",
       "instrument": "poly.clavinet",
-      "gain_db": -9,
+      "gain_db": -16.5,
       "pan": -0.3,
       "humanize": {
         "timing_ms": 4,
@@ -183,7 +183,7 @@
     {
       "name": "organ",
       "instrument": "organ.jazz",
-      "gain_db": -14,
+      "gain_db": -20.7,
       "pan": 0.3,
       "sends": {
         "verb": -12
@@ -206,7 +206,7 @@
     {
       "name": "guitar",
       "instrument": "guitar.steel",
-      "gain_db": 2,
+      "gain_db": -9,
       "pan": 0.15,
       "sends": {
         "verb": -14

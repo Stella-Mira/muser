@@ -790,7 +790,7 @@ fn cmd_instruments(name: Option<&str>, family: Option<&str>, json: bool) -> Resu
         println!("  {:<28} {}", info.name, info.description);
     }
     println!(
-        "\n共 {} 个。另可用 sfz:/path/to.sfz 加载 SFZ 音色库，plugin:/path/to.vst3 加载第三方 VSTi。\n`muser instruments <名称>` 查看详情与可调参数。",
+        "\n共 {} 个，已按音量校准：gain_db 为 0 时大致一样响（参考乐句约 -20 LUFS）。另可用 sfz:/path/to.sfz 加载 SFZ 音色库，plugin:/path/to.vst3 加载第三方 VSTi（不校准，`muser sounds describe` 给出比内置乐器响/轻多少）。\n`muser instruments <名称>` 查看详情与可调参数。",
         list.len()
     );
     Ok(())

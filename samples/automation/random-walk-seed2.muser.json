@@ -11,7 +11,7 @@
     {
       "name": "drums",
       "instrument": "drums.909",
-      "gain_db": -5,
+      "gain_db": -15.3,
       "clips": [
         {
           "start": 0,
@@ -504,7 +504,7 @@
     {
       "name": "acid",
       "instrument": "bass.acid",
-      "gain_db": -3,
+      "gain_db": -5,
       "instrument_params": {
         "resonance": 0.85,
         "env_mod": 0.7,

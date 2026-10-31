@@ -18,7 +18,7 @@ use manguebyte::dsp::instruments::{
     PluckedString, PolySynthParams, PolySynthVoice, StringParams, WindParams, WindVoice,
 };
 use manguebyte::midi::MidiMessage;
-use manguebyte::prelude::{AudioBuffer, NoteRef, ProcessSpec, Processor, Synth, Voice};
+use manguebyte::prelude::{AudioBuffer, NoteRef, ProcessSpec, Processor, Synth, Voice, decibels};
 use serde::Serialize;
 
 use crate::params::{self, ParamInfo};
@@ -66,11 +66,13 @@ impl<V: Voice<f32>> Playable for Synth<V, f32> {
 pub struct TrackInstrument {
     inner: Box<dyn Playable>,
     channel: u8,
+    /// 输出端的校准增益（内置乐器，见 crate::levels）。
+    trim: f32,
 }
 
 impl TrackInstrument {
     fn new(inner: impl Playable + 'static, channel: u8) -> Self {
-        Self { inner: Box::new(inner), channel }
+        Self { inner: Box::new(inner), channel, trim: 1.0 }
     }
 
     /// 该乐器约定使用的 MIDI 通道（鼓组按惯例用 9）。
@@ -96,6 +98,11 @@ impl TrackInstrument {
     }
     pub fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
         self.inner.process(buffer);
+        if self.trim != 1.0 {
+            for ch in 0..buffer.num_channels() {
+                buffer.channel_mut(ch).iter_mut().for_each(|s| *s *= self.trim);
+            }
+        }
     }
     pub fn set_param(&mut self, name: &str, value: f64) {
         self.inner.set_param(name, value);
@@ -759,9 +766,18 @@ pub fn resolve_for(name: &str, params: &InstrumentParams, spec: &ProcessSpec) ->
     if let Some(rest) = trimmed.strip_prefix("plugin:") {
         return resolve_plugin(rest, params, spec);
     }
-    let (_, mut patch) = lookup(trimmed).ok_or_else(|| InstrumentError::Unknown { name: name.to_string() })?;
+    let (info, mut patch) = lookup(trimmed).ok_or_else(|| InstrumentError::Unknown { name: name.to_string() })?;
     patch.apply(params).map_err(|detail| InstrumentError::Param { detail })?;
-    patch.instantiate().map_err(|detail| InstrumentError::Load { detail })
+    // 校准按实际音色：poly 合成器的音色和某个预设一样时用那个预设的校准（`synth.poly` + 内嵌预设 = 预设本身），
+    // 自己设计的音色不校准（音色库里存的音色照旧）。
+    let level_name = match &patch {
+        Patch::Poly(p) => poly::PRESETS.iter().find(|x| x.params == *p).map(|x| format!("poly.{}", slug(x.name)))
+            .or_else(|| (*p == PolySynthParams::default()).then(|| "synth.poly".to_string())),
+        _ => Some(info.name.clone()),
+    };
+    let mut inst = patch.instantiate().map_err(|detail| InstrumentError::Load { detail })?;
+    inst.trim = decibels::db_to_gain(level_name.map_or(0.0, |n| crate::levels::trim_db(&n))) as f32;
+    Ok(inst)
 }
 
 /// 用乐器自身的默认音色解析。

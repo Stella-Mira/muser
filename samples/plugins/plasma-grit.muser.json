@@ -18,7 +18,7 @@
   "tracks": [
     {
       "name": "kick",
-      "instrument": "drums.909",
+      "instrument": "drums.909", "gain_db": -10.3,
       "output": "drums",
       "clips": [
         {
@@ -225,7 +225,7 @@
       "name": "clap",
       "instrument": "drums.909",
       "output": "drums",
-      "gain_db": -5,
+      "gain_db": -15.3,
       "clips": [
         {
           "start": 0,
@@ -335,7 +335,7 @@
       "name": "hat",
       "instrument": "drums.909",
       "output": "drums",
-      "gain_db": -12,
+      "gain_db": -22.3,
       "clips": [
         {
           "start": 0,
@@ -540,7 +540,7 @@
     {
       "name": "bass",
       "instrument": "poly.moog_bass",
-      "gain_db": -4,
+      "gain_db": -7,
       "effects": [
         {
           "type": "plugin",
@@ -779,7 +779,7 @@
     {
       "name": "lead",
       "instrument": "poly.trance_supersaw",
-      "gain_db": -12,
+      "gain_db": -10.3,
       "effects": [
         {
           "type": "plugin",

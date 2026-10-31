@@ -316,6 +316,51 @@ pub fn analyze(project: &Project, audio: bool, settings: RenderSettings) -> Resu
     Ok(Report { tempo: p.tempo, bars, key: key.name().to_string(), sections, tells, findings })
 }
 
+/// "第 i 段撤掉这几条轨"的具体写法：有 form 时给出改 form[i] 的 JSON，没有 form 时说去掉哪几小节的音符。
+fn mute_hint(project: &Project, sections: &[SectionReport], i: usize, mute: &[&str]) -> String {
+    let s = &sections[i];
+    let span = format!("第 {}–{} 小节", s.bar, s.bar + s.bars - 1);
+    if project.form.is_empty() {
+        return format!("{}（{span}）去掉 {} 的音符", s.name, mute.join("、"));
+    }
+    let list = mute.iter().map(|m| format!("\"{m}\"")).collect::<Vec<_>>().join(", ");
+    format!("{}（{span}）撤掉 {}：form[{i}] 写成 {{\"section\": \"{}\", \"mute\": [{list}]}}（原有的 transpose / seed 照留）", s.name, mute.join("、"), s.name)
+}
+
+/// 编制不变时：开头一段只留最稀的一件（铺底 / 和弦），其余先不进。
+fn sparse_hint(project: &Project, sections: &[SectionReport]) -> String {
+    let Some(first) = sections.first() else { return String::new() };
+    let keep = first.tracks.iter().filter(|t| !t.drums).min_by(|a, b| a.onsets_per_bar.total_cmp(&b.onsets_per_bar)).or(first.tracks.first());
+    let Some(keep) = keep else { return String::new() };
+    let mute: Vec<&str> = first.tracks.iter().filter(|t| t.name != keep.name).map(|t| t.name.as_str()).collect();
+    if mute.is_empty() {
+        return String::new();
+    }
+    let mut out = format!("例如 {}，只留 {}", mute_hint(project, sections, 0, &mute), keep.name);
+    if sections.len() >= 3 {
+        out.push('；');
+        out.push_str(&drop_hint(project, sections));
+    }
+    out
+}
+
+/// 能量只升时：在最后一个高潮段的前一段撤掉鼓（没有鼓就撤掉最密的一件），让高潮"重新进来"。
+fn drop_hint(project: &Project, sections: &[SectionReport]) -> String {
+    let peak = sections.iter().rposition(|s| s.energy == sections.iter().map(|x| x.energy).max().unwrap_or(0)).unwrap_or(0);
+    let i = if peak >= 2 { peak - 1 } else { sections.len().saturating_sub(2).max(1).min(sections.len() - 1) };
+    let s = &sections[i];
+    let mut mute: Vec<&str> = s.tracks.iter().filter(|t| t.drums).map(|t| t.name.as_str()).collect();
+    if mute.is_empty() {
+        if let Some(t) = s.tracks.iter().max_by(|a, b| a.onsets_per_bar.total_cmp(&b.onsets_per_bar)) {
+            mute.push(&t.name);
+        }
+    }
+    if mute.is_empty() || mute.len() == s.tracks.len() {
+        return String::new();
+    }
+    format!("比如 {}，下一段再全部进来", mute_hint(project, sections, i, &mute))
+}
+
 /// AI 味检查：真实编曲里几乎总有、机器默认写法常缺的特征。只给适用的（段落太少、没有鼓等时不查）。
 #[allow(clippy::too_many_arguments)]
 fn tells(
@@ -341,13 +386,13 @@ fn tells(
         let e: Vec<u8> = sections.iter().map(|s| s.energy).collect();
         let rising = e.windows(2).all(|w| w[1] >= w[0]);
         tell(2, "能量只升不降", rising, if rising {
-            format!("能量 {:?} 从不下降（实测的真实编曲 62/62 都有下降）：让间奏、bridge 或最后一遍副歌前撤掉几件乐器（form 的 mute，或这一段不写 part）", e)
+            format!("能量 {:?} 从不下降（实测的真实编曲 62/62 都有下降）：让间奏、bridge 或最后一遍副歌前撤掉几件乐器。{}", e, drop_hint(project, sections))
         } else { format!("能量 {:?} 有起有落", e) });
         let present: Vec<Vec<&str>> = sections.iter().map(|s| s.tracks.iter().map(|t| t.name.as_str()).collect()).collect();
         let used: std::collections::BTreeSet<&str> = present.iter().flatten().copied().collect();
         let constant = used.len() >= 2 && present.iter().all(|p| p.len() == used.len());
         tell(3, "编制从头到尾不变", constant, if constant {
-            "每条轨每段都在：让乐器有进有出——前奏少几件、副歌再进来、某段撤掉鼓或贝斯（form 的 mute，或不写那一段的 part）".into()
+            format!("每条轨每段都在：让乐器有进有出——前奏少几件、副歌再进来、某段撤掉鼓或贝斯。{}", sparse_hint(project, sections))
         } else { "乐器有进有出".into() });
         let progs: Vec<String> = sections.iter().filter(|s| !s.chords.is_empty()).map(|s| {
             let mut c: Vec<&str> = s.chords.iter().map(|x| x.trim_start_matches('~')).collect();
@@ -546,6 +591,9 @@ mod tests {
         };
         let hits = |p: &Project| -> Vec<u8> { analyze(p, false, RenderSettings::default()).unwrap().tells.iter().filter(|t| t.hit).map(|t| t.id).collect() };
         assert_eq!(hits(&mk("", false)), [1, 2, 3, 4, 8]);
+        let r = analyze(&mk("", false), false, RenderSettings::default()).unwrap();
+        let t3 = &r.tells.iter().find(|t| t.id == 3).unwrap().detail;
+        assert!(t3.contains("a（第 1–8 小节）撤掉 bass") && t3.contains(r#"form[0] 写成 {"section": "a", "mute": ["bass"]}"#), "{t3}");
         // 一段 6 小节、能量回落、贝斯退出、借用和弦 Fm、keys 有 humanize。
         assert_eq!(hits(&mk("drop", true)), Vec::<u8>::new());
     }

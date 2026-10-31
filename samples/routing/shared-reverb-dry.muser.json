@@ -5,7 +5,7 @@
     {
       "name": "piano",
       "instrument": "poly.fm_electric_piano",
-      "gain_db": -4,
+      "gain_db": -1.8,
       "pan": -0.3,
       "clips": [
         {
@@ -211,7 +211,7 @@
     {
       "name": "strings",
       "instrument": "strings.ensemble",
-      "gain_db": -8,
+      "gain_db": -19,
       "pan": 0.3,
       "clips": [
         {
@@ -369,7 +369,7 @@
     {
       "name": "choir",
       "instrument": "choir.ooh",
-      "gain_db": -10,
+      "gain_db": -11.1,
       "clips": [
         {
           "start": 0,

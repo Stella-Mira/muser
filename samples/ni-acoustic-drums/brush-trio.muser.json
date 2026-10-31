@@ -151,7 +151,7 @@
     {
       "name": "bass",
       "instrument": "bass.finger",
-      "gain_db": -5,
+      "gain_db": -3.6,
       "instrument_params": {
         "tone": 1400
       },
@@ -180,7 +180,7 @@
     {
       "name": "piano",
       "instrument": "poly.fm_electric_piano",
-      "gain_db": -10,
+      "gain_db": -7.8,
       "sends": {
         "verb": -10
       },
@@ -211,7 +211,7 @@
     {
       "name": "vibes",
       "instrument": "mallet.vibraphone",
-      "gain_db": -2,
+      "gain_db": -6.1,
       "sends": {
         "verb": -8
       },

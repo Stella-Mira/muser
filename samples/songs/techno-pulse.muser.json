@@ -11,7 +11,7 @@
     {
       "name": "drums",
       "instrument": "drums.techno",
-      "gain_db": 0.0,
+      "gain_db": -10.1,
       "clips": [
         {
           "start": 0.0,
@@ -192,7 +192,7 @@
     {
       "name": "bassline",
       "instrument": "synth.fm",
-      "gain_db": -3.0,
+      "gain_db": -8,
       "clips": [
         {
           "start": 0.0,
@@ -253,7 +253,7 @@
     {
       "name": "stab",
       "instrument": "synth.poly",
-      "gain_db": -9.0,
+      "gain_db": -4.3,
       "pan": 0.25,
       "clips": [
         {
