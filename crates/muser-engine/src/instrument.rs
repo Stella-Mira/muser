@@ -768,11 +768,12 @@ pub fn resolve_for(name: &str, params: &InstrumentParams, spec: &ProcessSpec) ->
     }
     let (info, mut patch) = lookup(trimmed).ok_or_else(|| InstrumentError::Unknown { name: name.to_string() })?;
     patch.apply(params).map_err(|detail| InstrumentError::Param { detail })?;
-    // 校准按实际音色：poly 合成器的音色和某个预设一样时用那个预设的校准（`synth.poly` + 内嵌预设 = 预设本身），
-    // 自己设计的音色不校准（音色库里存的音色照旧）。
+    // 校准跟着乐器名（调了参数的预设仍按预设校准）；`synth.poly` 内嵌完整音色（`patch`）时，和某个预设一样就用那个预设的
+    // 校准（内嵌预设 = 预设本身），自己设计的音色不校准（音色库里存的音色照旧）。
     let level_name = match &patch {
-        Patch::Poly(p) => poly::PRESETS.iter().find(|x| x.params == *p).map(|x| format!("poly.{}", slug(x.name)))
-            .or_else(|| (*p == PolySynthParams::default()).then(|| "synth.poly".to_string())),
+        Patch::Poly(p) if info.name == "synth.poly" && params.contains_key("patch") => {
+            poly::PRESETS.iter().find(|x| x.params == *p).map(|x| format!("poly.{}", slug(x.name)))
+        }
         _ => Some(info.name.clone()),
     };
     let mut inst = patch.instantiate().map_err(|detail| InstrumentError::Load { detail })?;
