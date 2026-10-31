@@ -127,7 +127,7 @@ fn chain(list: &[muser_core::EffectSlot]) -> Vec<Value> {
                     let pick = ["effect", "@preset", "type", "FX Type"].iter().find_map(|k| params.get(*k).and_then(Value::as_str)).or(uri_tail);
                     (pick.map_or(stem.clone(), |p| format!("{stem}: {p}")), None)
                 }
-                Effect::Compressor { sidechain, .. } => ("compressor".to_string(), sidechain.clone()),
+                Effect::Compressor { .. } | Effect::Vocoder { .. } => (e.type_name().to_string(), e.sidechain().map(str::to_string)),
                 Effect::Eq { shape, .. } => (format!("eq {shape}"), None),
                 e => (e.type_name().to_string(), None),
             };

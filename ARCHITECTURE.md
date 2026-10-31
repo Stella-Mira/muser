@@ -255,7 +255,7 @@ muser render demo.muser.json -o demo.wav   # 离线渲染
 - 自动化：points / lfo / random（带种子）三种形状，目标覆盖内置乐器参数、效果器参数、
   轨增益与声像、主增益与主总线效果器；乐器/效果器每 64 帧更新，增益与声像逐帧更新
 - 轨增益、等功率声像、主增益、结尾余响
-- 效果器链：reverb / delay / compressor / chorus / eq(filter) / limiter / phaser / flanger，可挂到轨级、总线或主总线
+- 效果器链：reverb / delay / compressor / multiband_compressor / chorus / eq(filter) / limiter / phaser / flanger / tremolo / auto_pan / widener / transient_shaper / tape / bitcrusher / ring_mod / frequency_shifter / formant_filter / granular_delay / vocoder（侧链调制），可挂到轨级、总线或主总线
 - 路由：总线（`buses`）、音轨/总线的 `output` 与推子后 `sends`（可自动化）、总线套总线；compressor `sidechain`
   由任意音轨/总线的推子后信号触发（静音的键轨照样触发）；按拓扑序离线处理，缓冲用完即释放；
   有延迟的效果器（limiter 前瞻、插件上报的延迟）在各自链路上补偿，保证并联信号对齐。

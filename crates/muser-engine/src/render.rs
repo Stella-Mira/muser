@@ -21,7 +21,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use muser_core::routing::{self, Node, Plan};
-use muser_core::{Beats, Effect, Project};
+use muser_core::{Beats, Project};
 
 use manguebyte::analysis::LoudnessMeter;
 use manguebyte::prelude::{AudioBuffer, NoteRef, ProcessSpec, WavFormat, decibels, wav};
@@ -691,15 +691,12 @@ pub fn render_metered(project: &Project, settings: RenderSettings, cache: &mut R
     Ok((audio, meters))
 }
 
-/// 侧链键节点：音轨/总线压缩器引用的，以及主总线压缩器引用的（后者按 `master_effects` 下标给出）。
+/// 侧链键节点：音轨/总线上压缩器、声码器引用的，以及主总线上的（后者按 `master_effects` 下标给出）。
 fn sidechain_keys(project: &Project, plan: &Plan) -> Result<(HashSet<Node>, Vec<Option<Node>>), EngineError> {
     let mut key_nodes: HashSet<Node> = plan.sidechains.iter().map(|s| s.key).collect();
     let mut master_keys: Vec<Option<Node>> = Vec::new();
     for e in &project.master_effects {
-        let k = match &e.effect {
-            Effect::Compressor { sidechain: Some(name), .. } => Some(routing::find_node(project, name).map_err(invalid)?),
-            _ => None,
-        };
+        let k = e.effect.sidechain().map(|name| routing::find_node(project, name)).transpose().map_err(invalid)?;
         if let Some(k) = k {
             key_nodes.insert(k);
         }

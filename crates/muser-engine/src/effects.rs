@@ -10,6 +10,10 @@
 
 use muser_core::Effect;
 
+use manguebyte::dsp::{
+    AutoPan, Bitcrusher, FormantFilter, FrequencyShifter, GranularDelay, LfoShape, MultibandCompressor, RingModulator,
+    StereoWidener, TapeSaturation, TransientShaper, Tremolo, Vocoder,
+};
 use manguebyte::prelude::{
     AudioBuffer, Chorus, Compressor, Delay, Filter, FilterShape, Limiter, Phaser, ProcessSpec,
     Processor, Reverb,
@@ -36,6 +40,18 @@ pub enum Fx {
     Eq { filter: Filter<f32>, shape: String, gain_db: f64 },
     Limiter(Limiter<f32>),
     Phaser(Phaser<f32>),
+    Bitcrusher(Bitcrusher<f32>),
+    Tremolo(Tremolo<f32>),
+    AutoPan(AutoPan<f32>),
+    RingMod(RingModulator<f32>),
+    FrequencyShifter(FrequencyShifter<f32>),
+    Widener(StereoWidener<f32>),
+    TransientShaper(TransientShaper<f32>),
+    MultibandCompressor(MultibandCompressor<f32>),
+    Tape(TapeSaturation<f32>),
+    Vocoder(MakeupVocoder),
+    GranularDelay(GranularDelay<f32>),
+    FormantFilter(FormantFilter<f32>),
     Other(Box<dyn Processor<f32>>),
     #[cfg(feature = "host")]
     Plugin(HostedPlugin),
@@ -53,6 +69,18 @@ impl Fx {
             Fx::Eq { filter, .. } => filter,
             Fx::Limiter(p) => p,
             Fx::Phaser(p) => p,
+            Fx::Bitcrusher(p) => p,
+            Fx::Tremolo(p) => p,
+            Fx::AutoPan(p) => p,
+            Fx::RingMod(p) => p,
+            Fx::FrequencyShifter(p) => p,
+            Fx::Widener(p) => p,
+            Fx::TransientShaper(p) => p,
+            Fx::MultibandCompressor(p) => p,
+            Fx::Tape(p) => p,
+            Fx::Vocoder(p) => p,
+            Fx::GranularDelay(p) => p,
+            Fx::FormantFilter(p) => p,
             Fx::Other(p) => p.as_mut(),
             #[cfg(feature = "host")]
             Fx::Plugin(p) => p,
@@ -104,6 +132,48 @@ impl Fx {
             (Fx::Phaser(p), "rate_hz") => p.set_rate_hz(v),
             (Fx::Phaser(p), "feedback") => p.set_feedback(v),
             (Fx::Phaser(p), "mix") => p.set_mix(v),
+            (Fx::Bitcrusher(b), "bits") => b.set_bits(v),
+            (Fx::Bitcrusher(b), "downsample") => b.set_downsample(v),
+            (Fx::Bitcrusher(b), "mix") => b.set_mix(v),
+            (Fx::Tremolo(t), "rate_hz") => t.set_rate_hz(v),
+            (Fx::Tremolo(t), "depth") => t.set_depth(v),
+            (Fx::Tremolo(t), "stereo_phase") => t.set_stereo_phase(v),
+            (Fx::AutoPan(a), "rate_hz") => a.set_rate_hz(v),
+            (Fx::AutoPan(a), "width") => a.set_width(v),
+            (Fx::RingMod(r), "frequency_hz") => r.set_frequency_hz(v),
+            (Fx::RingMod(r), "mix") => r.set_mix(v),
+            (Fx::FrequencyShifter(f), "shift_hz") => f.set_shift_hz(v),
+            (Fx::FrequencyShifter(f), "feedback") => f.set_feedback(v),
+            (Fx::FrequencyShifter(f), "mix") => f.set_mix(v),
+            (Fx::Widener(w), "width") => w.set_width(v),
+            (Fx::Widener(w), "bass_mono_hz") => {
+                w.set_bass_mono(v > 0.0);
+                w.set_bass_mono_hz(v.max(20.0));
+            }
+            (Fx::TransientShaper(t), "attack_db") => t.set_attack_db(v),
+            (Fx::TransientShaper(t), "sustain_db") => t.set_sustain_db(v),
+            (Fx::TransientShaper(t), "attack_ms") => t.set_attack_ms(v),
+            (Fx::TransientShaper(t), "sustain_ms") => t.set_sustain_ms(v),
+            (Fx::MultibandCompressor(m), name) => multiband_set(m, name, v),
+            (Fx::Tape(t), "drive_db") => t.set_drive_db(v),
+            (Fx::Tape(t), "asymmetry") => t.set_asymmetry(v),
+            (Fx::Tape(t), "wow_cents") => t.set_wow_cents(v),
+            (Fx::Tape(t), "flutter_cents") => t.set_flutter_cents(v),
+            (Fx::Tape(t), "mix") => t.set_mix(v),
+            (Fx::Vocoder(voc), name) => voc.set(name, v),
+            (Fx::GranularDelay(g), "position_ms") => g.set_position_ms(v),
+            (Fx::GranularDelay(g), "spray_ms") => g.set_spray_ms(v),
+            (Fx::GranularDelay(g), "grain_ms") => g.set_grain_ms(v),
+            (Fx::GranularDelay(g), "density_hz") => g.set_density_hz(v),
+            (Fx::GranularDelay(g), "pitch_semitones") => g.set_pitch_semitones(v),
+            (Fx::GranularDelay(g), "pitch_spray") => g.set_pitch_spray(v),
+            (Fx::GranularDelay(g), "stereo_spread") => g.set_stereo_spread(v),
+            (Fx::GranularDelay(g), "feedback") => g.set_feedback(v),
+            (Fx::GranularDelay(g), "mix") => g.set_mix(v),
+            (Fx::FormantFilter(f), "vowel") => f.set_vowel(v),
+            (Fx::FormantFilter(f), "shift") => f.set_shift(v),
+            (Fx::FormantFilter(f), "gain_db") => f.set_gain_db(v),
+            (Fx::FormantFilter(f), "mix") => f.set_mix(v),
             #[cfg(feature = "host")]
             (Fx::Plugin(p), id) => p.set_param(id, v),
             _ => {}
@@ -225,9 +295,182 @@ fn build_one(effect: &Effect, spec: &ProcessSpec) -> Result<Fx, EffectError> {
                 .with_mix(*mix);
             Fx::Chorus(f)
         }
+        Effect::Bitcrusher { bits, downsample, mix } => {
+            Fx::Bitcrusher(Bitcrusher::new().with_bits(*bits).with_downsample(*downsample).with_mix(*mix))
+        }
+        Effect::Tremolo { rate_hz, depth, stereo_phase, shape } => Fx::Tremolo(
+            Tremolo::new().with_rate_hz(*rate_hz).with_depth(*depth).with_stereo_phase(*stereo_phase).with_shape(lfo_shape(shape)),
+        ),
+        Effect::AutoPan { rate_hz, width, shape } => {
+            Fx::AutoPan(AutoPan::new().with_rate_hz(*rate_hz).with_width(*width).with_shape(lfo_shape(shape)))
+        }
+        Effect::RingMod { frequency_hz, mix } => Fx::RingMod(RingModulator::new().with_frequency_hz(*frequency_hz).with_mix(*mix)),
+        Effect::FrequencyShifter { shift_hz, feedback, mix } => {
+            Fx::FrequencyShifter(FrequencyShifter::new().with_shift_hz(*shift_hz).with_feedback(*feedback).with_mix(*mix))
+        }
+        Effect::Widener { width, bass_mono_hz } => Fx::Widener(
+            StereoWidener::new().with_width(*width).with_bass_mono(*bass_mono_hz > 0.0).with_bass_mono_hz(bass_mono_hz.max(20.0)),
+        ),
+        Effect::TransientShaper { attack_db, sustain_db, attack_ms, sustain_ms } => Fx::TransientShaper(
+            TransientShaper::new().with_attack_db(*attack_db).with_sustain_db(*sustain_db).with_attack_ms(*attack_ms).with_sustain_ms(*sustain_ms),
+        ),
+        Effect::MultibandCompressor { low_hz, high_hz, threshold_db, ratio, attack_ms, release_ms, low_db, mid_db, high_db } => {
+            let mut m = MultibandCompressor::new(*low_hz, *high_hz);
+            for (k, makeup) in [*low_db, *mid_db, *high_db].into_iter().enumerate() {
+                let b = m.band_mut(k);
+                b.set_threshold_db(*threshold_db);
+                b.set_ratio(*ratio);
+                b.set_attack_ms(*attack_ms);
+                b.set_release_ms(*release_ms);
+                b.set_makeup_db(makeup);
+            }
+            Fx::MultibandCompressor(m)
+        }
+        Effect::Tape { drive_db, asymmetry, wow_cents, flutter_cents, mix } => Fx::Tape(
+            TapeSaturation::new().with_drive_db(*drive_db).with_asymmetry(*asymmetry).with_wow_cents(*wow_cents).with_flutter_cents(*flutter_cents).with_mix(*mix),
+        ),
+        Effect::Vocoder { bands, low_hz, high_hz, formant_shift, attack_ms, release_ms, gain_db, mix, .. } => Fx::Vocoder(MakeupVocoder {
+            vocoder: Vocoder::new()
+                .with_bands(bands.round() as usize)
+                .with_range_hz(*low_hz, *high_hz)
+                .with_formant_shift(*formant_shift)
+                .with_attack_ms(*attack_ms)
+                .with_release_ms(*release_ms)
+                .with_gain_db(0.0)
+                .with_mix(1.0),
+            low_hz: *low_hz,
+            high_hz: *high_hz,
+            gain: manguebyte::prelude::decibels::db_to_gain(gain_db + VOCODER_MAKEUP_DB) as f32,
+            mix: *mix as f32,
+            dry: AudioBuffer::new(0, 0),
+        }),
+        Effect::GranularDelay { position_ms, spray_ms, grain_ms, density_hz, pitch_semitones, pitch_spray, stereo_spread, feedback, mix } => {
+            Fx::GranularDelay(
+                GranularDelay::new()
+                    .with_position_ms(*position_ms)
+                    .with_spray_ms(*spray_ms)
+                    .with_grain_ms(*grain_ms)
+                    .with_density_hz(*density_hz)
+                    .with_pitch_semitones(*pitch_semitones)
+                    .with_pitch_spray(*pitch_spray)
+                    .with_stereo_spread(*stereo_spread)
+                    .with_feedback(*feedback)
+                    .with_mix(*mix),
+            )
+        }
+        Effect::FormantFilter { vowel, shift, gain_db, mix } => {
+            Fx::FormantFilter(FormantFilter::new().with_vowel(*vowel).with_shift(*shift).with_gain_db(*gain_db).with_mix(*mix))
+        }
         Effect::Plugin { path, id, params } => build_plugin(path, id.as_deref(), params, spec)?,
     };
     Ok(fx)
+}
+
+/// 声码器输出的固定补偿：输出是载波乘调制信号的频带包络，比输入低约 40 dB。补了以后，调制信号是校准过的内置乐器
+/// （约 -20 LUFS）时，`gain_db` 为 0 大致和干声一样响。
+const VOCODER_MAKEUP_DB: f64 = 40.0;
+
+/// 声码器加补偿增益；干湿在这里混（上游的 mix 固定为 1），补偿不影响干声。
+pub struct MakeupVocoder {
+    vocoder: Vocoder<f32>,
+    /// 频带范围要两端一起设，记下当前值。
+    low_hz: f64,
+    high_hz: f64,
+    gain: f32,
+    mix: f32,
+    dry: AudioBuffer<f32>,
+}
+
+impl MakeupVocoder {
+    fn set(&mut self, name: &str, v: f64) {
+        match name {
+            "bands" => self.vocoder.set_bands(v.round() as usize),
+            "low_hz" | "high_hz" => {
+                if name == "low_hz" {
+                    self.low_hz = v;
+                } else {
+                    self.high_hz = v;
+                }
+                self.vocoder.set_range_hz(self.low_hz, self.high_hz);
+            }
+            "formant_shift" => self.vocoder.set_formant_shift(v),
+            "attack_ms" => self.vocoder.set_attack_ms(v),
+            "release_ms" => self.vocoder.set_release_ms(v),
+            "gain_db" => self.gain = manguebyte::prelude::decibels::db_to_gain(v + VOCODER_MAKEUP_DB) as f32,
+            "mix" => self.mix = v as f32,
+            _ => {}
+        }
+    }
+    fn run(&mut self, buffer: &mut AudioBuffer<f32>, context: Option<&manguebyte::prelude::ProcessContext<'_, f32>>) {
+        let (ch, n) = (buffer.num_channels(), buffer.num_frames());
+        if self.dry.num_channels() != ch || self.dry.capacity() < n {
+            self.dry = AudioBuffer::new(ch, n);
+        }
+        self.dry.set_num_frames(n);
+        for c in 0..ch {
+            self.dry.channel_mut(c).copy_from_slice(buffer.channel(c));
+        }
+        match context {
+            Some(ctx) => self.vocoder.process_with(buffer, ctx),
+            None => self.vocoder.process(buffer),
+        }
+        let (wet, dry) = (self.gain * self.mix, 1.0 - self.mix);
+        for c in 0..ch {
+            for (o, d) in buffer.channel_mut(c).iter_mut().zip(self.dry.channel(c)) {
+                *o = *o * wet + *d * dry;
+            }
+        }
+    }
+}
+
+impl Processor<f32> for MakeupVocoder {
+    fn prepare(&mut self, spec: &ProcessSpec) {
+        self.vocoder.prepare(spec);
+        self.dry = AudioBuffer::new(spec.num_channels, spec.max_block_size);
+    }
+    fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
+        self.run(buffer, None);
+    }
+    fn process_with(&mut self, buffer: &mut AudioBuffer<f32>, context: &manguebyte::prelude::ProcessContext<'_, f32>) {
+        self.run(buffer, Some(context));
+    }
+    fn reset(&mut self) {
+        self.vocoder.reset();
+    }
+}
+
+/// tremolo / auto_pan 的 `shape`（已校验过取值）。
+fn lfo_shape(shape: &str) -> LfoShape {
+    match shape.trim().to_ascii_lowercase().as_str() {
+        "triangle" => LfoShape::Triangle,
+        "square" => LfoShape::Square,
+        "saw_up" => LfoShape::SawUp,
+        "saw_down" => LfoShape::SawDown,
+        _ => LfoShape::Sine,
+    }
+}
+
+/// 三段压缩的自动化：分频点、三段共用的动态参数、每段的补偿增益。
+fn multiband_set(m: &mut MultibandCompressor<f32>, name: &str, v: f64) {
+    match name {
+        "low_hz" => m.set_crossover_hz(0, v),
+        "high_hz" => m.set_crossover_hz(1, v),
+        "low_db" => m.band_mut(0).set_makeup_db(v),
+        "mid_db" => m.band_mut(1).set_makeup_db(v),
+        "high_db" => m.band_mut(2).set_makeup_db(v),
+        _ => {
+            for k in 0..MultibandCompressor::<f32>::BANDS {
+                let b = m.band_mut(k);
+                match name {
+                    "threshold_db" => b.set_threshold_db(v),
+                    "ratio" => b.set_ratio(v),
+                    "attack_ms" => b.set_attack_ms(v),
+                    "release_ms" => b.set_release_ms(v),
+                    _ => {}
+                }
+            }
+        }
+    }
 }
 
 /// 把 EQ 的 shape 字符串解析为 manguebyte 的 FilterShape。
@@ -346,7 +589,7 @@ pub fn chain_latency(chain: &[Fx]) -> usize {
 
 /// 把整条效果链分块施加到 `buffer`（in-place）。`lanes[i]` 是第 i 个效果器的自动化，
 /// 有自动化的效果器按 [`crate::automate::BLOCK`] 帧一块，每块开始前写入当前值。
-/// `keys[i]` 是第 i 个效果器（侧链压缩器）的触发信号，与 `buffer` 帧对齐。
+/// `keys[i]` 是第 i 个效果器的侧链信号（压缩器的触发、声码器的调制），与 `buffer` 帧对齐。
 pub fn apply_chain(
     chain: &mut [Fx],
     buffer: &mut AudioBuffer<f32>,
@@ -369,11 +612,11 @@ pub fn apply_chain(
                 }
             }
             let end = (start + step).min(frames);
-            match (key, &mut *fx) {
-                (Some(k), Fx::Compressor(c)) => {
+            match (key, fx.processor()) {
+                (Some(k), Some(p)) => {
                     let mut ctx = manguebyte::prelude::ProcessContext::empty().with_sidechain(k);
                     ctx.offset = start;
-                    buffer.windowed(start..end, |block| c.process_with(block, &ctx));
+                    buffer.windowed(start..end, |block| p.process_with(block, &ctx));
                 }
                 _ => buffer.windowed(start..end, |block| fx.process(block)),
             }

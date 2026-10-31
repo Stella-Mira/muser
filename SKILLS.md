@@ -383,12 +383,24 @@ muser view song.muser.json --open      # 后台运行；页面 http://127.0.0.1:
 | `delay` | 回声 | [delay.md](skills/effects/delay.md) |
 | `reverb` | 空间感 | [reverb.md](skills/effects/reverb.md) |
 | `limiter` | 限峰防爆（主总线最后） | [limiter.md](skills/effects/limiter.md) |
+| `multiband_compressor` | 三段压缩（母带、鼓总线） | [multiband_compressor.md](skills/effects/multiband_compressor.md) |
+| `transient_shaper` | 起音 / 延音塑形（鼓） | [transient_shaper.md](skills/effects/transient_shaper.md) |
+| `tape` | 磁带饱和与跑调感（温暖、lo-fi） | [tape.md](skills/effects/tape.md) |
+| `bitcrusher` | 降位降采样（8-bit、老采样器） | [bitcrusher.md](skills/effects/bitcrusher.md) |
+| `tremolo` | 音量颤动、斩波 | [tremolo.md](skills/effects/tremolo.md) |
+| `auto_pan` | 左右自动摆动 | [auto_pan.md](skills/effects/auto_pan.md) |
+| `widener` | 立体声加宽（低频保持单声道） | [widener.md](skills/effects/widener.md) |
+| `ring_mod` | 金属、钟、机器人 | [ring_mod.md](skills/effects/ring_mod.md) |
+| `frequency_shifter` | 移频、无尽螺旋 | [frequency_shifter.md](skills/effects/frequency_shifter.md) |
+| `formant_filter` | 元音滤波，让合成器"说话" | [formant_filter.md](skills/effects/formant_filter.md) |
+| `granular_delay` | 颗粒延迟、shimmer 氛围 | [granular_delay.md](skills/effects/granular_delay.md) |
+| `vocoder` | 声码器（`sidechain` 写人声那条轨） | [vocoder.md](skills/effects/vocoder.md) |
 | `plugin` | 第三方 VST3/CLAP/LV2 | [plugin.md](skills/effects/plugin.md) |
 
 ### 推荐串联顺序
 
-- 单条轨：`eq → compressor → chorus/phaser/flanger → delay → reverb`（用不到的跳过）。
-- 主总线：`eq → compressor → limiter`，limiter 永远在最后。
+- 单条轨：`eq → transient_shaper → compressor → tape/bitcrusher → chorus/phaser/flanger/tremolo → delay → reverb`（用不到的跳过）。
+- 主总线：`eq → compressor 或 multiband_compressor → limiter`，limiter 永远在最后。
 - 贝斯、底鼓一般不加 reverb / chorus；其它轨用 `eq` highpass 150Hz 左右给它们让出低频。
 
 ## 工作流示例

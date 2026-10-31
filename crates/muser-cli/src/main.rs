@@ -1383,9 +1383,9 @@ fn cmd_routing(path: &str) -> Result<()> {
         if list.is_empty() {
             String::new()
         } else {
-            format!(" → {}", list.iter().map(|e| match &e.effect {
-                muser_core::Effect::Compressor { sidechain: Some(k), .. } => format!("compressor⟵{k}"),
-                e => e.type_name().to_string(),
+            format!(" → {}", list.iter().map(|e| match e.effect.sidechain() {
+                Some(k) => format!("{}⟵{k}", e.type_name()),
+                None => e.type_name().to_string(),
             }).collect::<Vec<_>>().join(" → "))
         }
     };

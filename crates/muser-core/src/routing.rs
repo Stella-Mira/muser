@@ -16,7 +16,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Automation, Effect, EffectSlot, Project};
+use crate::{Automation, EffectSlot, Project};
 
 /// 输出目标里表示主总线的名字。
 pub const MASTER: &str = "master";
@@ -174,7 +174,7 @@ pub fn plan(p: &Project) -> Result<Plan, String> {
     let mut sidechains = Vec::new();
     let mut scan = |node: Node, effects: &[EffectSlot], at: &str| -> Result<(), String> {
         for (ei, e) in effects.iter().enumerate() {
-            if let Effect::Compressor { sidechain: Some(name), .. } = &e.effect {
+            if let Some(name) = e.effect.sidechain() {
                 let key = find_node(p, name).map_err(|m| format!("{at}.effects[{ei}].sidechain: {m}"))?;
                 if key == node {
                     return Err(format!("{at}.effects[{ei}].sidechain: 不能用自己触发自己"));
@@ -191,7 +191,7 @@ pub fn plan(p: &Project) -> Result<Plan, String> {
         scan(Node::Bus(i), &b.effects, &format!("buses[{i}]"))?;
     }
     for (ei, e) in p.master_effects.iter().enumerate() {
-        if let Effect::Compressor { sidechain: Some(name), .. } = &e.effect {
+        if let Some(name) = e.effect.sidechain() {
             find_node(p, name).map_err(|m| format!("master_effects[{ei}].sidechain: {m}"))?;
         }
     }

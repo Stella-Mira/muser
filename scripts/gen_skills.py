@@ -148,6 +148,149 @@ EFFECT_EXTRA = {
             "加载插件会运行第三方代码，只使用可信的本机插件。",
         ],
     },
+    "bitcrusher": {
+        "presets": [
+            ("老采样器的颗粒（lo-fi 鼓、键盘）", {"type": "bitcrusher", "bits": 12, "downsample": 2, "mix": 0.5}),
+            ("8-bit 游戏机", {"type": "bitcrusher", "bits": 8, "downsample": 4, "mix": 1.0}),
+            ("很脏的破碎感（特效段落）", {"type": "bitcrusher", "bits": 4, "downsample": 8, "mix": 0.7}),
+        ],
+        "tips": [
+            "降位会抬高底噪和高频锯齿，整首都开时 mix 0.3-0.5 更耐听；全开适合短段落和过门。",
+            "放在混响之前：先变脏再进空间；放在混响之后会把尾音也打碎。",
+            "和 `tape` 一起用是常见的 lo-fi 链：tape → bitcrusher（轻）→ eq lowpass。",
+        ],
+    },
+    "tremolo": {
+        "presets": [
+            ("电钢经典颤音", {"type": "tremolo", "rate_hz": 4.5, "depth": 0.5}),
+            ("按八分音符斩波 @120bpm（rate = tempo/30）", {"type": "tremolo", "rate_hz": 4, "depth": 1, "shape": "square"}),
+            ("左右交替的颤音（加宽）", {"type": "tremolo", "rate_hz": 3, "depth": 0.6, "stereo_phase": 0.5}),
+        ],
+        "tips": [
+            "rate_hz 按节拍算才合拍：每拍一次 = tempo/60，八分音符 = tempo/30，十六分 = tempo/15。",
+            "`shape: square` + depth 1 是 trance gate / 斩波；sine 更柔和。",
+            "depth 自动化（从 0 推到 0.8）能做出逐渐\"颤起来\"的效果。",
+        ],
+    },
+    "auto_pan": {
+        "presets": [
+            ("缓慢漂移的 pad", {"type": "auto_pan", "rate_hz": 0.15, "width": 0.7}),
+            ("按小节左右摆 @120bpm（每 2 拍一次 = tempo/120）", {"type": "auto_pan", "rate_hz": 1, "width": 1}),
+            ("左右跳的打击乐点缀", {"type": "auto_pan", "rate_hz": 2, "width": 0.8, "shape": "square"}),
+        ],
+        "tips": [
+            "贝斯、底鼓、主唱保持居中，不要自动声像。",
+            "多条轨都要动时，速度错开（0.13、0.21…）比同速更自然。",
+        ],
+    },
+    "ring_mod": {
+        "presets": [
+            ("钟声 / 金属感", {"type": "ring_mod", "frequency_hz": 600, "mix": 0.5}),
+            ("机器人", {"type": "ring_mod", "frequency_hz": 90, "mix": 0.8}),
+            ("慢速颤动（低频载波）", {"type": "ring_mod", "frequency_hz": 18, "mix": 0.6}),
+        ],
+        "tips": [
+            "结果和音高无关、几乎总是不和谐的：用在特效、过门、科幻音效；旋律轨慎用。",
+            "frequency_hz 自动化扫动会产生很夸张的金属滑音。",
+        ],
+    },
+    "frequency_shifter": {
+        "presets": [
+            ("细微旋转、加宽（类似相位器）", {"type": "frequency_shifter", "shift_hz": 3, "mix": 0.5}),
+            ("不和谐的失谐特效", {"type": "frequency_shifter", "shift_hz": 120, "mix": 0.7}),
+            ("无尽上升的螺旋（巴伯音）", {"type": "frequency_shifter", "shift_hz": 8, "feedback": 0.8, "mix": 0.6}),
+        ],
+        "tips": [
+            "和变调不同：移频后泛音不再是整数倍，所以大移频总是不和谐的。",
+            "小移频（1-10 Hz）+ mix 0.5 最常用：慢慢旋转、不跑调。",
+            "feedback 很高时会长时间堆积，记得给尾音留时间（渲染的 `--tail`）。",
+        ],
+    },
+    "widener": {
+        "presets": [
+            ("pad / 和弦加宽", {"type": "widener", "width": 1.5, "bass_mono_hz": 150}),
+            ("混响总线加宽", {"type": "widener", "width": 1.3, "bass_mono_hz": 200}),
+            ("变窄（让一件乐器集中）", {"type": "widener", "width": 0.5, "bass_mono_hz": 0}),
+        ],
+        "tips": [
+            "只对立体声的声音有用：单声道的乐器（左右一样）先加 chorus 或 auto_pan 才有\"宽\"可扩。",
+            "width 超过 1.6 时合成单声道（手机外放）会明显变薄；主总线上不超过 1.2。",
+            "bass_mono_hz 保持低频居中，低频才稳、才有力；0 关闭。",
+        ],
+    },
+    "transient_shaper": {
+        "presets": [
+            ("鼓更冲、更脆", {"type": "transient_shaper", "attack_db": 6, "sustain_db": 0}),
+            ("鼓更干更紧（去房间声）", {"type": "transient_shaper", "attack_db": 2, "sustain_db": -8}),
+            ("鼓更软、更远", {"type": "transient_shaper", "attack_db": -6, "sustain_db": 2}),
+        ],
+        "tips": [
+            "和压缩器不同，它只看声音的形状、不看音量：轻敲和重敲得到一样比例的处理。",
+            "放在压缩器之前：先定形状，再控动态。",
+            "也能用在原声吉他（拨弦更清楚）、贝斯（attack 让音头更清楚）。",
+        ],
+    },
+    "multiband_compressor": {
+        "presets": [
+            ("母带轻压（在 limiter 之前）", {"type": "multiband_compressor", "threshold_db": -18, "ratio": 2, "attack_ms": 20, "release_ms": 200}),
+            ("鼓总线：压住低频、提亮高频", {"type": "multiband_compressor", "low_hz": 150, "high_hz": 4000, "threshold_db": -24, "ratio": 4, "high_db": 2}),
+            ("贝斯：只压低频的轰鸣", {"type": "multiband_compressor", "low_hz": 120, "high_hz": 1500, "threshold_db": -22, "ratio": 4}),
+        ],
+        "tips": [
+            "比普通压缩器的好处：底鼓一响不会把镲片也压下去。",
+            "low_db / mid_db / high_db 是每段的补偿增益，也可以当一个很宽的三段 EQ 用。",
+            "主总线上顺序：eq → multiband_compressor → limiter。",
+        ],
+    },
+    "tape": {
+        "presets": [
+            ("温暖（主总线、鼓总线）", {"type": "tape", "drive_db": 4, "wow_cents": 0, "flutter_cents": 0}),
+            ("老卡带 lo-fi（跑调感）", {"type": "tape", "drive_db": 6, "wow_cents": 12, "flutter_cents": 3}),
+            ("重度饱和", {"type": "tape", "drive_db": 15, "asymmetry": 0.3, "mix": 0.8}),
+        ],
+        "tips": [
+            "wow / flutter 会让音高轻微晃动：和弦乐器、钢琴最明显；只想要温暖时把它们设成 0。",
+            "lo-fi 链：tape → bitcrusher（轻）→ eq lowpass 8000 → reverb。",
+            "drive 会让声音变响，用 `muser mix-report` 看推子后的响度再调 gain_db。",
+        ],
+    },
+    "vocoder": {
+        "presets": [
+            ("经典机器人合唱（载波：锯齿 pad）", {"type": "vocoder", "sidechain": "voice", "bands": 16}),
+            ("复古粗糙", {"type": "vocoder", "sidechain": "voice", "bands": 8, "release_ms": 30}),
+            ("清楚、可懂", {"type": "vocoder", "sidechain": "voice", "bands": 32, "high_hz": 10000}),
+        ],
+        "tips": [
+            "挂在**载波**轨（合成器和弦、string machine、锯齿 pad）上；`sidechain` 写**调制**信号——人声（audio 音轨）或任何有节奏的轨。",
+            "调制信号那条轨常设 `\"muted\": true`：只用来塑造声音，自己不出声（侧链照样拿得到信号）。",
+            "载波要一直在响、泛音丰富；载波停了声码器就没声音。和弦跟着人声唱的音换。",
+            "调制信号是校准过的内置乐器时 gain_db 0 大致和原声一样响；人声录音偏轻时把 gain_db 往上调。",
+        ],
+    },
+    "granular_delay": {
+        "presets": [
+            ("闪光 shimmer（高八度的云）", {"type": "granular_delay", "pitch_semitones": 12, "feedback": 0.5, "mix": 0.4}),
+            ("颗粒氛围（钢琴、pad 的发送总线）", {"type": "granular_delay", "grain_ms": 120, "spray_ms": 200, "density_hz": 20, "feedback": 0.4, "mix": 1.0}),
+            ("故障感的碎片", {"type": "granular_delay", "grain_ms": 15, "density_hz": 80, "pitch_spray": 7, "mix": 0.5}),
+        ],
+        "tips": [
+            "最常用在发送总线上（mix 1），再跟一个 reverb：氛围、电影感。",
+            "pitch_semitones 12 + 一点 feedback 是 shimmer 混响的核心声音。",
+            "颗粒的随机是固定种子，同一份工程每次渲染结果一样。",
+        ],
+    },
+    "formant_filter": {
+        "presets": [
+            ("\"哇\"——合成器 lead 说话（配合 vowel 自动化）", {"type": "formant_filter", "vowel": 0, "mix": 0.9}),
+            ("贝斯的 \"哦\"", {"type": "formant_filter", "vowel": 3, "shift": -3, "mix": 0.7}),
+            ("细小的嗓子", {"type": "formant_filter", "vowel": 2, "shift": 5, "mix": 0.8}),
+        ],
+        "tips": [
+            "vowel 用自动化来回移动（0 ↔ 4，lfo 或 points）才是\"说话\"的感觉；固定一个值只是一种音色。",
+            "泛音丰富的音色（锯齿、方波）效果最明显；正弦波几乎没变化。",
+            "和合成器自带的 vowel 滤波不同：它是效果器，可以挂在任何轨（包括插件乐器、音频）上。",
+        ],
+    },
 }
 
 
@@ -1039,7 +1182,7 @@ def routing_page():
 
 def validate_presets():
     """把所有场景预设放进一个工程，交给 muser validate。"""
-    tracks = [{"name": "kick", "instrument": "drums.909", "clips": []}]
+    tracks = [{"name": "kick", "instrument": "drums.909", "clips": []}, {"name": "voice", "instrument": "choir.solo", "clips": []}]
     for name, extra in EFFECT_EXTRA.items():
         for _, preset in extra["presets"]:
             tracks.append({"instrument": "synth.poly", "effects": [preset], "clips": []})

@@ -1441,7 +1441,7 @@ mod outputs_tests {
         assert!((m[0].left - 1.0).abs() < 1e-6 && m[0].right.abs() < 1e-6);
         assert!(m[1].left.abs() < 1e-6 && (m[1].right - 0.5).abs() < 1e-3);
         // 居中是等功率：两边各约 0.707，反相取负
-        assert!((m[2].left + 0.7071).abs() < 1e-3 && (m[2].right + 0.7071).abs() < 1e-3);
+        assert!((m[2].left + std::f32::consts::FRAC_1_SQRT_2).abs() < 1e-3 && (m[2].right + std::f32::consts::FRAC_1_SQRT_2).abs() < 1e-3);
     }
 
     #[test]

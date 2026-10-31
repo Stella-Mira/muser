@@ -952,6 +952,30 @@ mod tests {
         (0..2).map(|ch| a.channel(ch)[from..to.min(a.num_frames())].iter().map(|s| f64::from(*s).powi(2)).sum::<f64>()).sum()
     }
 
+    /// 新效果器（描述表里的示例）：都能渲染、不出 NaN、不是静音，而且确实改变了声音。
+    /// 声码器用一条（静音的）人声轨做调制信号。
+    #[test]
+    fn workstation_effects_render_and_change_the_sound() {
+        let names = ["bitcrusher", "tremolo", "auto_pan", "ring_mod", "frequency_shifter", "widener", "transient_shaper",
+            "multiband_compressor", "tape", "vocoder", "granular_delay", "formant_filter"];
+        let song = |effects: serde_json::Value| proj(serde_json::json!({ "tempo": 120, "tracks": [
+            { "name": "voice", "instrument": "choir.solo", "muted": true,
+              "clips": [{ "start": 0, "length": 4, "notes": [{ "pitch": 60, "start": 0, "length": 2 }, { "pitch": 62, "start": 2, "length": 2 }] }] },
+            { "name": "pad", "instrument": "poly.string_machine", "pan": 0.4, "effects": effects,
+              "clips": [{ "start": 0, "length": 4, "notes": [{ "pitch": 57, "start": 0, "length": 4 }, { "pitch": 64, "start": 0.5, "length": 3.5 }] }] } ] }));
+        let dry = render(&song(serde_json::json!([])), quiet()).unwrap();
+        for name in names {
+            let spec = muser_core::effect_spec(name).unwrap();
+            let fx: serde_json::Value = serde_json::from_str(spec.example).unwrap();
+            let wet = render(&song(serde_json::json!([fx])), quiet()).unwrap_or_else(|e| panic!("{name}: {e}"));
+            let n = wet.num_frames().min(dry.num_frames());
+            assert!((0..2).all(|c| wet.channel(c).iter().all(|x| x.is_finite())), "{name}: NaN");
+            assert!(energy(&wet, 0, n) > energy(&dry, 0, n) * 0.01, "{name}: 几乎无声");
+            let diff: f64 = (0..2).map(|c| (0..n).map(|k| f64::from(wet.channel(c)[k] - dry.channel(c)[k]).powi(2)).sum::<f64>()).sum();
+            assert!(diff > energy(&dry, 0, n) * 1e-3, "{name}: 声音没变");
+        }
+    }
+
     #[test]
     fn routing_bus_output_and_gain() {
         let base = serde_json::json!({ "tempo": 120, "tracks": [
