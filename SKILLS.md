@@ -219,6 +219,28 @@ SFZ 音色的连奏采样（`trigger=legato`，如 Sonatina 的 `* Legato.sfz`�
 - MIDI 导出写成弯音轮事件（一个音轨一个通道，所以导出后会带上同时响着的其它音）。
 - MCP：`add_notes` 的音符可带 `bend`。
 
+## 调律：tuning（纯律、历史律制、微分音、Scala）
+
+工程上写 `tuning`，有音高的内置乐器与 SFZ 采样器就照它发音；鼓组保持标准音高，插件乐器不受影响（用插件自己的调律设置）。
+
+```json
+"tuning": { "scale": "werckmeister_iii" }
+"tuning": { "scale": "just", "key": "D" }
+"tuning": { "scale": "custom", "key": "C", "deviations": [0, 0, 0, 0, -50, 0, 0, 0, 0, 0, 0, -50] }
+"tuning": { "scale": "equal", "divisions": 24 }
+"tuning": { "scale": "scala", "scala": "slendro.scl" }
+"tuning": { "reference_hz": 415 }
+```
+
+- 十二个音的律制，音符照常写（ABC、`pitch`、和弦都不变），只是每个音高一点低一点：
+  `just`（五度纯律，大三度纯 5/4，`key` 是主音，转调后会走音）、`pythagorean`、`meantone`（四分之一音差中庸全音律，文艺复兴、早期巴洛克）、
+  `werckmeister_iii` / `kirnberger_iii` / `vallotti` / `young`（巴赫时代的好律，所有调都能弹、各调色彩不同）。
+- `custom`：`deviations` 是 12 个数，从 `key` 起每个半音偏多少音分。阿拉伯木卡姆 Rast：E、B 各 -50（四分之三音）；波斯、土耳其音乐同理。
+- `equal` + `divisions`：微分音平均律，**每个 MIDI 键一级**（24 平均律里相邻两个键差四分之一音），所以这时不要用 ABC / 和弦，直接写 `pitch`。
+- `scala`：`.scl` 文件（相对工程文件所在目录），可配 `kbm` 键位映射；没有 `kbm` 时音阶第 0 级在中央 C（60），一个键一级。甘美兰、实验律制的现成文件很多（Scala 档案库）。
+- `reference_hz`（默认 440，巴洛克常用 415）、`reference_key`（默认 69 = A4）、`detune_cents` 整体偏移。
+- MIDI / ABC 导出写的是键，不带调律。
+
 ## 延音踏板：pedal
 
 clip 上的 `pedal` 是延音踏板（CC64）踩下的区间 `[[起, 止], ...]`（拍，相对 clip 起点，递增、不重叠）。踩着时松开的键继续发声，

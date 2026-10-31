@@ -29,6 +29,7 @@ pub mod profile;
 pub mod vital;
 
 /// 当前线程正在渲染的工程速度与拍号，交给插件的走带（tempo 同步的 LFO、延迟等）。
+pub mod tuning;
 pub mod transport {
     use std::cell::Cell;
 
@@ -109,6 +110,7 @@ pub fn validate_score(project: &muser_core::Project) -> Result<(), EngineError> 
 
 pub fn validate(project: &muser_core::Project) -> Result<(), EngineError> {
     validate_score(project)?;
+    tuning::build(project).map_err(|e| EngineError::Core(muser_core::CoreError::Invalid(e)))?;
     for (ti, track) in project.tracks.iter().enumerate() {
         for (ci, clip) in track.clips.iter().enumerate() {
             if let Some(a) = &clip.audio {

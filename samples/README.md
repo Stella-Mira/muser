@@ -16,6 +16,7 @@
 | [`audio/`](#audio) | 音频音轨：AWS Polly 合成的人声对到节拍上，和鼓、贝斯、电钢一起混音 |
 | [`ni-acoustic-drums/`](#ni-acoustic-drums) | Native Instruments Acoustic Drums（Kontakt 库）的鼓 loop 放在音频轨上，muser 配贝斯与键盘（需本机装好这个库） |
 | [`sketches/`](#sketches) | 草稿 A/B：ABC 旋律 + grid 贝斯 + 鼓手 + humanize，几行 JSON 一段 |
+| [`tuning/`](#tuning) | 调律：纯律的众赞歌、四分之三音的木卡姆 Rast |
 
 wav 不入库，用脚本一次渲染（生成在工程旁边，同名 `.wav`）：
 
@@ -199,4 +200,13 @@ clip 的 `"abc"` 用 ABC 记谱写音符（写法见 [skills/notation.md](../ski
 ```bash
 muser play samples/abc/kesh-jig.muser.json
 ```
+
+## tuning
+
+工程上的 `tuning`（见 SKILLS.md 的"调律"）：有音高的内置乐器与 SFZ 照它发音，鼓组不变。
+
+| 工程 | 内容 |
+|---|---|
+| `just-chorale` | D 大调五度纯律（`"scale": "just", "key": "D"`）：风琴和弦与弦乐旋律，大三度是纯的 5/4，和声比平均律更"静"。把 `tuning` 删掉再听一遍对比 |
+| `maqam-rast` | 木卡姆 Rast：`custom` 把 E 和 B 各降 50 音分（四分之三音），ABC 照常写 E、B。笛子旋律、大提琴持续音、鼓 |
 

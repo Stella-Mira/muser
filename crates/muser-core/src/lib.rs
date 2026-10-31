@@ -22,6 +22,7 @@ pub mod grid;
 pub mod humanize;
 pub mod routing;
 pub mod time;
+pub mod tuning;
 
 pub use automation::{Automation, CompiledCurve, Curve, LfoWave, RandomStyle, Shape, Target};
 pub use effect::{effect_spec, ChoiceSpec, Effect, EffectSlot, EffectSpec, ParamSpec, EFFECT_SPECS};
@@ -51,6 +52,9 @@ pub struct Project {
     /// 主总线自动化（目标 `master_gain_db` / `master_effects[i]`），默认空。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub automation: Vec<Automation>,
+    /// 调律（可省略，默认十二平均律、A4 = 440）：历史律制、微分音、Scala 文件。见 [`tuning`]。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tuning: Option<tuning::Tuning>,
     /// 随机种子：没有写 `seed` 的 random 自动化由它推导。换一个就换一种随机变化。默认 0。
     #[serde(default, skip_serializing_if = "is_zero")]
     pub seed: u64,
@@ -86,6 +90,7 @@ impl Project {
             master_gain_db: 0.0,
             master_effects: Vec::new(),
             automation: Vec::new(),
+            tuning: None,
             seed: 0,
             buses: Vec::new(),
             tracks: Vec::new(),
@@ -139,6 +144,9 @@ impl Project {
             )));
         }
         routing::plan(self).map_err(CoreError::Invalid)?;
+        if let Some(t) = &self.tuning {
+            t.validate().map_err(CoreError::Invalid)?;
+        }
         self.validate_arrangement().map_err(CoreError::Invalid)?;
         for (i, a) in self.automation.iter().enumerate() {
             check_automation(a, Layer::Master, self.master_effects.len(), &[], &format!("automation[{i}]"))?;

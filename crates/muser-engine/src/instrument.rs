@@ -38,6 +38,8 @@ trait Playable {
     fn midi(&mut self, _message: MidiMessage) {}
     /// 自动化：运行中改一个参数（名称与 `instrument_params` 相同，鼓组为 `鼓件.参数`）。
     fn set_param(&mut self, _name: &str, _value: f64) {}
+    /// 调律（工程的 `tuning`）。默认忽略（鼓组、插件）。
+    fn set_tuning(&mut self, _tuning: &manguebyte::dsp::Tuning) {}
 }
 
 fn midi_event(message: MidiMessage) -> manguebyte::prelude::Event {
@@ -107,6 +109,10 @@ impl TrackInstrument {
     pub fn set_param(&mut self, name: &str, value: f64) {
         self.inner.set_param(name, value);
     }
+    /// 调律：有音高的内置乐器与 SFZ 采样器照着它发音；鼓组、插件不变。
+    pub fn set_tuning(&mut self, tuning: &manguebyte::dsp::Tuning) {
+        self.inner.set_tuning(tuning);
+    }
 }
 
 /// 可运行中调参的乐器：持有当前音色参数，改参数后推给每个 voice。
@@ -138,6 +144,9 @@ impl<V: Voice<f32>, P: Copy + 'static> Playable for Tunable<V, P> {
             let (push, p) = (self.push, self.params);
             self.synth.voices_mut().for_each(|v| push(v, p));
         }
+    }
+    fn set_tuning(&mut self, tuning: &manguebyte::dsp::Tuning) {
+        self.synth.set_tuning(tuning);
     }
 }
 
@@ -421,6 +430,9 @@ impl Playable for SfzSampler {
     }
     fn process(&mut self, buffer: &mut AudioBuffer<f32>) {
         Processor::process(&mut self.sampler, buffer);
+    }
+    fn set_tuning(&mut self, tuning: &manguebyte::dsp::Tuning) {
+        self.sampler.set_tuning(tuning);
     }
 }
 

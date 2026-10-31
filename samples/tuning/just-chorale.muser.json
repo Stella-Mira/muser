@@ -1,0 +1,15 @@
+{
+  "name": "tuning/just-chorale",
+  "tempo": 66,
+  "tuning": { "scale": "just", "key": "D" },
+  "buses": [{ "name": "hall", "effects": [{ "type": "reverb", "mix": 1.0, "decay_seconds": 3.2, "size": 0.8 }] }],
+  "master_effects": [{ "type": "limiter", "ceiling_db": -1 }],
+  "tracks": [
+    { "name": "organ", "instrument": "organ.ballad", "gain_db": -8, "sends": { "hall": -8 },
+      "clips": [{ "start": 0, "length": 32,
+        "abc": "L:1/2\nK:D\n[D,F,A,D]2 | [D,G,B,D] [D,F,A,D] | [C,E,A,C]2 | [D,F,A,D]2 | [B,,D,F,B,]2 | [G,,D,G,B,] [A,,E,A,C] | [D,F,A,D]4 |" }] },
+    { "name": "strings", "instrument": "strings.ensemble", "gain_db": -3, "sends": { "hall": -6 },
+      "clips": [{ "start": 0, "length": 32,
+        "abc": "L:1/4\nK:D\nf4 | g2 f2 | e4 | f2 a2 | b4 | g2 e2 | f8 |" }] }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "name": "tuning/maqam-rast",
+  "tempo": 92,
+  "tuning": { "scale": "custom", "key": "C", "deviations": [0, 0, 0, 0, -50, 0, 0, 0, 0, 0, 0, -50] },
+  "buses": [{ "name": "room", "effects": [{ "type": "reverb", "mix": 1.0, "decay_seconds": 1.4, "size": 0.4 }] }],
+  "master_effects": [{ "type": "limiter", "ceiling_db": -1 }],
+  "tracks": [
+    { "name": "ney", "instrument": "wind.flute", "gain_db": -2, "sends": { "room": -10 },
+      "humanize": { "timing_ms": 10, "drift": 0.6, "velocity": 0.07 },
+      "clips": [{ "start": 0, "length": 32,
+        "abc": "L:1/8\nK:C\nC2DE F2G2 | A2GF E2D2 | E2FG A2B2 | c4 B2A2 | G2AB c2B2 | A2GF E2D2 | E2DC D2E2 | C8 |" }] },
+    { "name": "drone", "instrument": "strings.cello", "gain_db": -16, "sends": { "room": -12 },
+      "clips": [{ "start": 0, "length": 32, "abc": "L:1/1\nK:C\n[C,G,] | [C,G,] | [C,G,] | [C,G,] | [C,G,] | [C,G,] | [C,G,] | [C,G,] |" }] },
+    { "name": "darbuka", "instrument": "drums.acoustic", "gain_db": -11,
+      "clips": [{ "start": 0, "length": 32, "grid": { "kick": "x.....x.x.......", "snare": "....x.......x...", "hat": "..x...x...x...x." } }] }
+  ]
+}
