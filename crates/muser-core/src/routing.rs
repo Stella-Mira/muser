@@ -76,13 +76,25 @@ pub struct Sidechain {
     pub key: Node,
 }
 
+/// 直接输出：插件乐器的某一路输出（`instrument_params` 的 `@outputs` 里写了 `bus` 的项）不经过音轨的效果器与推子，
+/// 直接送进总线（如多麦克风鼓组的底鼓、军鼓各进一条总线）。
+#[derive(Debug, Clone, PartialEq)]
+pub struct Tap {
+    pub track: usize,
+    /// 这条音轨的第几路直接输出（`@outputs` 里写了 `bus` 的项按顺序）。
+    pub index: usize,
+    /// 去哪条总线（None = 主总线）。
+    pub to: Option<usize>,
+}
+
 /// 渲染计划。
 #[derive(Debug, Clone, PartialEq)]
 pub struct Plan {
-    /// 处理顺序：每个节点在它的所有输入（来自音轨/总线的信号和侧链键）之后。
+    /// 处理顺序：每个节点在它的所有输入（来自音轨/总线的信号、直接输出和侧链键）之后。
     pub order: Vec<Node>,
     pub edges: Vec<Edge>,
     pub sidechains: Vec<Sidechain>,
+    pub taps: Vec<Tap>,
 }
 
 impl Plan {
@@ -196,10 +208,27 @@ pub fn plan(p: &Project) -> Result<Plan, String> {
         }
     }
 
-    // 拓扑排序（Kahn）：依赖 = 送进来的信号 + 侧链键。
+    let mut taps = Vec::new();
+    for (i, t) in p.tracks.iter().enumerate() {
+        let Some(list) = t.instrument_params.get("@outputs").and_then(|v| v.as_array()) else { continue };
+        let mut index = 0;
+        for (k, o) in list.iter().enumerate() {
+            if let Some(bus) = o.get("bus").and_then(|b| b.as_str()) {
+                if !t.instrument.trim().starts_with("plugin:") {
+                    return Err(format!("tracks[{i}].instrument_params.@outputs 只用于插件乐器（plugin:）"));
+                }
+                let to = bus_index(p, bus, &format!("tracks[{i}].instrument_params.@outputs[{k}].bus"))?;
+                taps.push(Tap { track: i, index, to });
+                index += 1;
+            }
+        }
+    }
+
+    // 拓扑排序（Kahn）：依赖 = 送进来的信号 + 直接输出 + 侧链键。
     let nodes: Vec<Node> = (0..p.tracks.len()).map(Node::Track).chain((0..p.buses.len()).map(Node::Bus)).collect();
     let deps = |n: Node| -> Vec<Node> {
         let mut d: Vec<Node> = edges.iter().filter(|e| e.to.map(Node::Bus) == Some(n)).map(|e| e.from).collect();
+        d.extend(taps.iter().filter(|t| t.to.map(Node::Bus) == Some(n)).map(|t| Node::Track(t.track)));
         d.extend(sidechains.iter().filter(|s| s.node == n).map(|s| s.key));
         d.sort();
         d.dedup();
@@ -226,12 +255,25 @@ pub fn plan(p: &Project) -> Result<Plan, String> {
             order.push(n);
         }
     }
-    Ok(Plan { order, edges, sidechains })
+    Ok(Plan { order, edges, sidechains, taps })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 插件的直接输出：总线排在音轨之后；总线名要存在；只用于插件乐器。
+    #[test]
+    fn taps_order_and_checks() {
+        let pr = |bus: &str, inst: &str| project(&format!(r#"{{ "tempo": 120, "buses": [ {{ "name": "kick" }} ],
+            "tracks": [ {{ "name": "kit", "instrument": "{inst}", "instrument_params": {{ "@outputs": [ {{ "channel": 1, "bus": "{bus}" }}, {{ "channel": 2 }} ] }} }} ] }}"#));
+        let p = plan(&pr("kick", "plugin:/x.clap")).unwrap();
+        assert_eq!(p.taps, vec![Tap { track: 0, index: 0, to: Some(0) }]);
+        let at = |n: Node| p.order.iter().position(|x| *x == n).unwrap();
+        assert!(at(Node::Track(0)) < at(Node::Bus(0)));
+        assert!(plan(&pr("nope", "plugin:/x.clap")).unwrap_err().contains("没有名为 'nope' 的总线"));
+        assert!(plan(&pr("kick", "drums.808")).unwrap_err().contains("只用于插件乐器"));
+    }
 
     fn project(json: &str) -> Project {
         Project::from_json(json).unwrap()

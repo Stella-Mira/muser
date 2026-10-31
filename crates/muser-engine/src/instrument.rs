@@ -40,6 +40,10 @@ trait Playable {
     fn set_param(&mut self, _name: &str, _value: f64) {}
     /// 调律（工程的 `tuning`）。默认忽略（鼓组、插件）。
     fn set_tuning(&mut self, _tuning: &manguebyte::dsp::Tuning) {}
+    /// 上一块送到总线的各路直接输出（插件的 `@outputs` 写了 `bus` 的项，按顺序）。默认没有。
+    fn taps(&self) -> &[AudioBuffer<f32>] {
+        &[]
+    }
 }
 
 fn midi_event(message: MidiMessage) -> manguebyte::prelude::Event {
@@ -112,6 +116,10 @@ impl TrackInstrument {
     /// 调律：有音高的内置乐器与 SFZ 采样器照着它发音；鼓组、插件不变。
     pub fn set_tuning(&mut self, tuning: &manguebyte::dsp::Tuning) {
         self.inner.set_tuning(tuning);
+    }
+    /// 上一次 [`process`](Self::process) 送到总线的各路直接输出（立体声，帧数与那一块相同）。
+    pub fn taps(&self) -> &[AudioBuffer<f32>] {
+        self.inner.taps()
     }
 }
 
@@ -810,7 +818,7 @@ pub fn resolve(name: &str) -> Result<TrackInstrument, InstrumentError> {
 #[cfg(feature = "host")]
 struct PluginInstrument {
     // 先 drop 音频半，再 drop 控制半。
-    processor: Box<dyn Processor<f32> + Send>,
+    processor: manguebyte::host::any::AnyProcessor,
     opened: crate::plugin::Opened,
     pending: manguebyte::prelude::EventBuffer,
     transport: manguebyte::prelude::Transport,
@@ -820,18 +828,20 @@ struct PluginInstrument {
     wide: Option<WideOutput>,
 }
 
-/// 插件主输出的宽缓冲和混音方案。
+/// 插件主输出的宽缓冲、辅助输出的缓冲和混音方案；`taps` 是送到总线的各路（每块重写）。
 #[cfg(feature = "host")]
 struct WideOutput {
     buffer: AudioBuffer<f32>,
+    aux: Vec<AudioBuffer<f32>>,
     mix: Vec<crate::plugin::OutputMix>,
+    taps: Vec<AudioBuffer<f32>>,
 }
 
 #[cfg(feature = "host")]
 impl PluginInstrument {
-    /// 交给插件的缓冲：有 `@outputs` 时是宽缓冲，否则就是调用方的立体声缓冲。
+    /// 交给插件的缓冲：有 `@outputs` 时是宽缓冲（加上辅助输出），按方案混进 `buffer` 与各路直接输出；否则就是调用方的立体声缓冲。
     fn run(
-        processor: &mut Box<dyn Processor<f32> + Send>,
+        processor: &mut manguebyte::host::any::AnyProcessor,
         wide: &mut Option<WideOutput>,
         buffer: &mut AudioBuffer<f32>,
         ctx: &manguebyte::prelude::ProcessContext,
@@ -841,22 +851,45 @@ impl PluginInstrument {
             return;
         };
         let frames = buffer.num_frames();
-        if frames > wide.buffer.capacity() {
-            wide.buffer.resize(wide.buffer.num_channels(), frames);
+        for b in std::iter::once(&mut wide.buffer).chain(wide.aux.iter_mut()).chain(wide.taps.iter_mut()) {
+            if frames > b.capacity() {
+                b.resize(b.num_channels(), frames);
+            }
+            b.set_num_frames(frames);
+            b.clear();
         }
-        wide.buffer.set_num_frames(frames);
-        wide.buffer.clear();
-        processor.process_with(&mut wide.buffer, ctx);
+        if wide.aux.is_empty() {
+            processor.process_with(&mut wide.buffer, ctx);
+        } else if let Some(p) = processor.as_vst3_mut() {
+            p.process_with_aux(&mut wide.buffer, ctx, &mut wide.aux);
+        } else if let Some(p) = processor.as_clap_mut() {
+            p.process_with_aux(&mut wide.buffer, ctx, &mut wide.aux);
+        } else if let Some(p) = processor.as_lv2_mut() {
+            p.process_with_aux(&mut wide.buffer, ctx, &mut wide.aux);
+        } else if let Some(p) = processor.as_au_mut() {
+            p.process_with_aux(&mut wide.buffer, ctx, &mut wide.aux);
+        } else {
+            processor.process_with(&mut wide.buffer, ctx);
+        }
         for ch in 0..buffer.num_channels().min(2) {
             buffer.channel_mut(ch).fill(0.0);
         }
         for m in &wide.mix {
-            let src = wide.buffer.channel(m.channel);
+            let dst = match m.tap {
+                Some(t) => &mut wide.taps[t],
+                None => &mut *buffer,
+            };
             for (side, gain) in [(0, m.left), (1, m.right)] {
-                if side < buffer.num_channels() {
-                    for (d, s) in buffer.channel_mut(side).iter_mut().zip(src) {
-                        *d += s * gain;
-                    }
+                if side >= dst.num_channels() {
+                    continue;
+                }
+                let src = match m.aux {
+                    // 辅助输出是立体声（单声道两边都取第一路）
+                    Some(k) => wide.aux[k].channel(side.min(wide.aux[k].num_channels().saturating_sub(1))),
+                    None => wide.buffer.channel(m.channel),
+                };
+                for (d, s) in dst.channel_mut(side).iter_mut().zip(src) {
+                    *d += s * gain;
                 }
             }
         }
@@ -885,7 +918,7 @@ impl Playable for PluginInstrument {
         let wide_spec = self.wide.as_ref().map(|w| ProcessSpec { num_channels: w.buffer.num_channels(), ..*spec });
         let spec = wide_spec.as_ref().unwrap_or(spec);
         self.processor.prepare(spec);
-        if let Err(w) = self.opened.settle(self.processor.as_mut(), spec) {
+        if let Err(w) = self.opened.settle(&mut self.processor, spec) {
             eprintln!("[muser] 警告: {w}");
         }
         if self.opened.warmup > 0.0 {
@@ -914,6 +947,9 @@ impl Playable for PluginInstrument {
             let _ = self.opened.plugin.pump();
         }
     }
+    fn taps(&self) -> &[AudioBuffer<f32>] {
+        self.wide.as_ref().map_or(&[], |w| w.taps.as_slice())
+    }
     /// 自动化：`name` 为插件参数的数字 id（字符串形式），值为插件自动化刻度。
     fn set_param(&mut self, name: &str, value: f64) {
         if let Ok(id) = name.parse::<u32>() {
@@ -929,11 +965,16 @@ fn resolve_plugin(spec: &str, params: &InstrumentParams, ps: &ProcessSpec) -> Re
     let load_err = |detail: String| InstrumentError::PluginLoad { path: path.to_string(), detail };
     let mut opened = crate::plugin::Opened::open(path, id).map_err(load_err)?;
     opened.apply(params).map_err(|detail| InstrumentError::Param { detail })?;
-    let wide = opened.outputs.clone().map(|mix| WideOutput {
-        buffer: AudioBuffer::new(opened.main_output_channels(), ps.max_block_size),
-        mix,
+    let wide = opened.outputs.clone().map(|mix| {
+        let aux = if mix.iter().any(|m| m.aux.is_some()) {
+            opened.aux_output_channels().into_iter().map(|c| AudioBuffer::new(c.max(1), ps.max_block_size)).collect()
+        } else {
+            Vec::new()
+        };
+        let taps = mix.iter().filter(|m| m.tap.is_some()).map(|_| AudioBuffer::new(2, ps.max_block_size)).collect();
+        WideOutput { buffer: AudioBuffer::new(opened.main_output_channels(), ps.max_block_size), aux, mix, taps }
     });
-    let processor = opened.activate(ps.sample_rate, ps.max_block_size).map_err(load_err)?;
+    let processor = opened.activate_any(ps.sample_rate, ps.max_block_size).map_err(load_err)?;
     Ok(TrackInstrument::new(
         PluginInstrument {
             processor,

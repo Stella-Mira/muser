@@ -195,3 +195,35 @@ muser plugin save-state "<插件>" --params '{"@preset": "pad", "cutoff": "1200 
 - `@warmup`（秒，0–60）：激活后按真实时间静音运行，等插件在后台线程加载采样。DrumGizmo 这类插件加载鼓组是异步的，
   离线渲染比实时快得多，不等的话开头会是静音，且每次结果不同。代价是每次渲染/开始播放前多等这么久。
 - 加载哪个鼓组存在插件状态里：先用 `muser plugin save-state` 得到状态文件，把其中的 `drumkitfile` / `midimapfile` 路径改成鼓组位置。
+
+### 分轨：每一路送进自己的总线（`bus`）
+
+`@outputs` 的一项写了 `"bus": "<总线名>"`，这一路就**不进这条音轨**，直接送进那条总线（不经过本轨的效果器和推子），
+在总线上单独挂效果器、调音量、做发送和侧链；`muser mix-report` 也逐条总线报响度。没写 `bus` 的项照常混进本轨。
+插件只演奏一次，各路同时取出。
+
+插件的**辅助输出总线**（Kontakt 的 Out 2、Out 3…，多输出的鼓机、风琴的分区）用 `"aux": k`（主输出之后第 k 个，从 1 起，
+`muser plugin info` 的"音频输出"按顺序列出）代替 `channel`：取整条立体声，`pan` 是平衡。用到的辅助输出由 muser 打开。
+
+```json
+"buses": [
+  { "name": "kick",  "effects": [{ "type": "transient_shaper", "attack_db": 4 }, { "type": "compressor", "threshold_db": -20, "ratio": 4 }] },
+  { "name": "snare", "effects": [{ "type": "eq", "shape": "peak", "frequency": 200, "gain_db": 2 }], "sends": { "room": -12 } },
+  { "name": "room",  "effects": [{ "type": "reverb", "mix": 1.0, "decay_seconds": 1.2 }] }
+],
+"tracks": [
+  { "name": "kit", "instrument": "plugin:/Library/Audio/Plug-Ins/VST3/Kontakt 8.vst3#…",
+    "instrument_params": { "@state": "kit.muserstate", "@outputs": [
+      { "channel": 1, "pan": -1 }, { "channel": 2, "pan": 1 },
+      { "aux": 1, "bus": "kick" },
+      { "aux": 2, "bus": "snare" }
+    ] } },
+  { "name": "bass", "instrument": "bass.finger",
+    "effects": [{ "type": "compressor", "threshold_db": -30, "ratio": 6, "sidechain": "kick" }] }
+]
+```
+
+- 只有底鼓压贝斯（`"sidechain": "kick"` 写那条总线），踩镲不再跟着触发。
+- **哪个鼓件走哪一路要在插件里设好**（Kontakt：乐器的输出设置 / 鼓组混音页里把底鼓、军鼓分到不同的 Out），设置随插件状态存下：
+  在插件窗口里设一次（人，或用 computer use 的 agent），`muser sounds save` 存进音色库，以后直接用。
+- 静音这条音轨时它的各路直接输出一起静音。

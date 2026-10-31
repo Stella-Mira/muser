@@ -324,35 +324,59 @@ mod imp {
         pub warmup: f64,
     }
 
-    /// `@outputs` 的一项：插件主输出的某一路混进立体声的方式。
+    /// `@outputs` 的一项：插件的某一路输出混进立体声的方式，以及去哪（这条音轨，或某条总线）。
     #[derive(Debug, Clone, Copy, PartialEq)]
     pub struct OutputMix {
-        /// 从 0 开始的声道序号。
+        /// 主输出的第几路（从 0 开始）；`aux` 有值时不用。
         pub channel: usize,
+        /// 第几个辅助输出总线（从 0 开始，主输出之后按顺序）：整条立体声（单声道两边一样）。
+        pub aux: Option<usize>,
         pub left: f32,
         pub right: f32,
+        /// 送到第几个"直接输出"（`bus` 写了的项按顺序编号，见 `muser_core::routing::Tap`）；`None` 混进这条音轨。
+        pub tap: Option<usize>,
     }
 
-    /// 解析 `@outputs`：`[{"channel": 3, "gain_db": -3, "pan": -0.5, "invert": false}, …]`。
-    /// `channel` 从 1 开始；`pan` 在 -1（左）到 1（右）之间，等功率声像；没列出的声道不进混音。
-    pub fn parse_outputs(v: &Value, channels: usize) -> Result<Vec<OutputMix>, String> {
+    /// 解析 `@outputs`：
+    /// `[{"channel": 3, "gain_db": -3, "pan": -0.5, "invert": false, "bus": "kick"}, {"aux": 1, "bus": "snare"}, …]`。
+    /// `channel`（主输出第几路，从 1 开始，单声道、等功率声像）和 `aux`（第几个辅助输出总线，从 1 开始，立体声、`pan` 是平衡）
+    /// 二选一；`bus` 写了就直接送到那条总线（不经过本轨的效果器和推子），没写混进本轨。没列出的不进混音。
+    /// `aux` 是每个辅助总线的声道数（主输出之后按顺序）。
+    pub fn parse_outputs(v: &Value, channels: usize, aux: &[usize]) -> Result<Vec<OutputMix>, String> {
         let list = v.as_array().ok_or("@outputs 应为数组：[{\"channel\": 1, \"gain_db\": 0, \"pan\": 0}, …]")?;
         if list.is_empty() {
             return Err("@outputs 不能为空".into());
         }
         let mut out: Vec<OutputMix> = Vec::new();
+        let mut taps = 0;
         for (i, item) in list.iter().enumerate() {
             let o = item.as_object().ok_or_else(|| format!("@outputs[{i}] 应为对象"))?;
-            if let Some(k) = o.keys().find(|k| !["channel", "gain_db", "pan", "invert"].contains(&k.as_str())) {
-                return Err(format!("@outputs[{i}] 有未知字段 '{k}'，可用: channel / gain_db / pan / invert"));
+            if let Some(k) = o.keys().find(|k| !["channel", "aux", "gain_db", "pan", "invert", "bus"].contains(&k.as_str())) {
+                return Err(format!("@outputs[{i}] 有未知字段 '{k}'，可用: channel / aux / gain_db / pan / invert / bus"));
             }
-            let channel = o.get("channel").and_then(Value::as_u64).ok_or_else(|| format!("@outputs[{i}].channel 应为从 1 开始的整数"))? as usize;
-            if channel == 0 || channel > channels {
-                return Err(format!("@outputs[{i}].channel = {channel} 超出范围：这个插件的主输出有 {channels} 路"));
-            }
-            if out.iter().any(|m| m.channel == channel - 1) {
-                return Err(format!("@outputs 里声道 {channel} 重复"));
-            }
+            let index = |key: &str| o.get(key).map(|x| x.as_u64().filter(|&n| n >= 1).map(|n| n as usize).ok_or_else(|| format!("@outputs[{i}].{key} 应为从 1 开始的整数"))).transpose();
+            let (channel, aux_bus) = match (index("channel")?, index("aux")?) {
+                (Some(c), None) => {
+                    if c > channels {
+                        return Err(format!("@outputs[{i}].channel = {c} 超出范围：这个插件的主输出有 {channels} 路"));
+                    }
+                    if out.iter().any(|m| m.aux.is_none() && m.channel == c - 1) {
+                        return Err(format!("@outputs 里声道 {c} 重复"));
+                    }
+                    (c - 1, None)
+                }
+                (None, Some(a)) => {
+                    if a > aux.len() {
+                        return Err(format!("@outputs[{i}].aux = {a} 超出范围：这个插件有 {} 个辅助输出（`muser plugin info` 的\"音频输出\"）", aux.len()));
+                    }
+                    if out.iter().any(|m| m.aux == Some(a - 1)) {
+                        return Err(format!("@outputs 里辅助输出 {a} 重复"));
+                    }
+                    (0, Some(a - 1))
+                }
+                (Some(_), Some(_)) => return Err(format!("@outputs[{i}] 的 channel 与 aux 只能写一个")),
+                (None, None) => return Err(format!("@outputs[{i}] 要写 channel（主输出第几路）或 aux（第几个辅助输出）")),
+            };
             let num = |key: &str, default: f64| -> Result<f64, String> {
                 match o.get(key) {
                     None => Ok(default),
@@ -368,9 +392,23 @@ mod imp {
                 None => false,
                 Some(x) => x.as_bool().ok_or_else(|| format!("@outputs[{i}].invert 应为 true/false"))?,
             };
-            let angle = (pan + 1.0) * std::f64::consts::FRAC_PI_4;
+            let tap = match o.get("bus") {
+                None => None,
+                Some(x) => {
+                    x.as_str().filter(|b| !b.trim().is_empty()).ok_or_else(|| format!("@outputs[{i}].bus 应为总线名"))?;
+                    taps += 1;
+                    Some(taps - 1)
+                }
+            };
             let gain = 10f64.powf(gain_db / 20.0) * if invert { -1.0 } else { 1.0 };
-            out.push(OutputMix { channel: channel - 1, left: (gain * angle.cos()) as f32, right: (gain * angle.sin()) as f32 });
+            let (left, right) = if aux_bus.is_some() {
+                // 立体声：平衡（居中两边都不衰减）
+                (gain * (1.0 - pan).min(1.0), gain * (1.0 + pan).min(1.0))
+            } else {
+                let angle = (pan + 1.0) * std::f64::consts::FRAC_PI_4;
+                (gain * angle.cos(), gain * angle.sin())
+            };
+            out.push(OutputMix { channel, aux: aux_bus, left: left as f32, right: right as f32, tap });
         }
         Ok(out)
     }
@@ -722,7 +760,7 @@ mod imp {
                 }
             }
             if let Some(v) = params.get("@outputs") {
-                self.outputs = Some(parse_outputs(v, self.main_output_channels())?);
+                self.outputs = Some(parse_outputs(v, self.main_output_channels(), &self.aux_output_channels())?);
             }
             if let Some(v) = params.get("@warmup") {
                 self.warmup = parse_warmup(v)?;
@@ -971,14 +1009,53 @@ mod imp {
         /// 激活插件并把已应用的参数经音频队列再发一次。有的插件（如 Surge XT Effects 的 FX Type）
         /// 只在处理过程中收到参数事件时才真正切换，激活前写入的值会被忽略。
         pub fn activate(&mut self, sample_rate: f64, max_block_size: usize) -> Result<Box<dyn manguebyte::prelude::Processor<f32> + Send>, String> {
+            Ok(Box::new(self.activate_any(sample_rate, max_block_size)?))
+        }
+
+        /// 同 [`activate`](Self::activate)，给出能读辅助输出的处理器。
+        pub fn activate_any(&mut self, sample_rate: f64, max_block_size: usize) -> Result<manguebyte::host::any::AnyProcessor, String> {
+            self.enable_aux_outputs()?;
             let processor = self
                 .plugin
-                .activate(sample_rate, max_block_size)
+                .activate_processor(sample_rate, max_block_size)
                 .map_err(|e| format!("activate 失败: {e:?}"))?;
             for (id, x) in self.applied.clone() {
                 let _ = self.plugin.set_param(id, x);
             }
             Ok(processor)
+        }
+
+        /// 辅助输出总线（主输出之后按顺序）的声道数。
+        pub fn aux_output_channels(&self) -> Vec<usize> {
+            self.plugin.audio_outputs().iter().filter(|b| !b.is_main).map(|b| b.channels as usize).collect()
+        }
+
+        /// 打开 `@outputs` 用到的辅助输出总线（激活前；没用到的保持插件的默认）。
+        pub fn enable_aux_outputs(&mut self) -> Result<(), String> {
+            let used: Vec<usize> = self.outputs.iter().flatten().filter_map(|m| m.aux).collect();
+            if used.is_empty() {
+                return Ok(());
+            }
+            // 各格式的总线编号：VST3 / CLAP 按全部输出总线排（主输出在其中），LV2 只数辅助总线。
+            let positions: Vec<usize> = self.plugin.audio_outputs().iter().enumerate().filter(|(_, b)| !b.is_main).map(|(i, _)| i).collect();
+            for k in used {
+                let at = positions[k];
+                let r = if let Some(p) = self.plugin.as_vst3_mut() {
+                    p.set_audio_output_active(at, true).map_err(|e| format!("{e:?}"))
+                } else if let Some(p) = self.plugin.as_clap_mut() {
+                    // 没有 audio-ports-activation 的插件辅助输出本来就开着。
+                    match p.set_audio_port_active(false, at, true) {
+                        Err(manguebyte::host::clap::ClapError::Unsupported(_)) => Ok(()),
+                        r => r.map_err(|e| format!("{e:?}")),
+                    }
+                } else if let Some(p) = self.plugin.as_lv2_mut() {
+                    p.set_aux_output_active(k, true).map_err(|e| format!("{e:?}"))
+                } else {
+                    Ok(())
+                };
+                r.map_err(|e| format!("打开辅助输出 {} 失败: {e}", k + 1))?;
+            }
+            Ok(())
         }
 
         /// 主输出总线的声道数（没有主输出时按 2 路算）。
@@ -1435,7 +1512,7 @@ mod outputs_tests {
             { "channel": 1, "pan": -1 },
             { "channel": 2, "pan": 1, "gain_db": -6.0206 },
             { "channel": 3, "invert": true }
-        ]), 3)
+        ]), 3, &[])
         .unwrap();
         assert_eq!(m.iter().map(|x| x.channel).collect::<Vec<_>>(), [0, 1, 2]);
         assert!((m[0].left - 1.0).abs() < 1e-6 && m[0].right.abs() < 1e-6);
@@ -1456,7 +1533,23 @@ mod outputs_tests {
             json!([{ "channel": 1, "gain": 0 }]),
             json!([{ "channel": 1, "invert": "yes" }]),
         ] {
-            assert!(parse_outputs(&bad, 3).is_err(), "{bad} 应被拒绝");
+            assert!(parse_outputs(&bad, 3, &[2]).is_err(), "{bad} 应被拒绝");
+        }
+    }
+
+    #[test]
+    fn outputs_aux_and_bus() {
+        let m = parse_outputs(&json!([
+            { "channel": 1, "bus": "kick" },
+            { "channel": 2 },
+            { "aux": 2, "bus": "snare", "pan": 0.5 }
+        ]), 2, &[2, 2])
+        .unwrap();
+        assert_eq!(m.iter().map(|x| x.tap).collect::<Vec<_>>(), [Some(0), None, Some(1)]);
+        assert_eq!(m[2].aux, Some(1));
+        assert!((m[2].left - 0.5).abs() < 1e-6 && (m[2].right - 1.0).abs() < 1e-6, "立体声按平衡");
+        for bad in [json!([{ "aux": 3 }]), json!([{ "channel": 1, "aux": 1 }]), json!([{ "pan": 0 }]), json!([{ "aux": 1 }, { "aux": 1 }]), json!([{ "channel": 1, "bus": "" }])] {
+            assert!(parse_outputs(&bad, 2, &[2, 2]).is_err(), "{bad} 应被拒绝");
         }
     }
 

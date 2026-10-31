@@ -368,7 +368,7 @@ muser view song.muser.json --open      # 后台运行；页面 http://127.0.0.1:
 
 ## 混音路由：总线、发送、侧链
 
-默认每条轨直接进主总线。要让几条轨"一起处理"或"共用一个效果"，用工程的 `buses`：
+默认每条轨直接进主总线。要让几条轨"一起处理"或"共用一个效果"，用工程的 `buses`（多输出插件——Kontakt 鼓组、多麦克风鼓——还能把每一路直接送进各自的总线：`@outputs` 的 `bus`，见 [plugins.md](skills/plugins.md) 第 9 节）：
 
 ```json
 "buses": [

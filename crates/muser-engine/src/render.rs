@@ -274,8 +274,17 @@ struct LiveInstrument {
     lanes: Vec<automate::Lane>,
     block: AudioBuffer<f32>,
     out: Tape,
+    /// 直接输出（`@outputs` 写了 `bus` 的各路），与路由图里读它们的总线共用。
+    taps: Vec<SharedTape>,
     name: String,
     instrument: String,
+}
+
+/// 一段带子，演奏的音轨写、总线读（插件的直接输出）。
+type SharedTape = Arc<std::sync::Mutex<Tape>>;
+
+fn lock(t: &SharedTape) -> std::sync::MutexGuard<'_, Tape> {
+    t.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 impl LiveInstrument {
@@ -299,6 +308,7 @@ impl LiveInstrument {
             lanes,
             block: AudioBuffer::<f32>::new(2, cx.settings.block_size),
             out: Tape { start, ..Default::default() },
+            taps: Vec::new(),
             name: track.name.clone(),
             instrument: track.instrument.clone(),
         })
@@ -346,6 +356,9 @@ impl LiveInstrument {
             }
             let n = self.block.num_frames();
             self.out.push(&self.block, 0..n);
+            for (tape, buf) in self.taps.iter().zip(self.inst.taps()) {
+                lock(tape).push(buf, 0..n);
+            }
             self.frame = end;
         }
         Ok(())
@@ -773,6 +786,8 @@ struct Strip {
     keys: Vec<Option<usize>>,
     /// 送进本节点的边：(`plan.edges` 下标, 来源的 `strips` 下标)，按求和顺序。
     inputs: Vec<(usize, usize)>,
+    /// 送进本节点的直接输出：(来源音轨的 `strips` 下标, 带子)。
+    tap_inputs: Vec<(usize, SharedTape)>,
     /// 读本节点输出的节点（`strips` 下标）。
     readers: Vec<usize>,
     /// 效果链已处理到的帧（输入侧）。
@@ -885,13 +900,14 @@ impl Renderer {
                 }
             };
             let active = all_nodes || !muted || key_nodes.contains(&node);
+            // 有直接输出的音轨不进缓存（缓存只存立体声，存不下各路直接输出）。
             let cache_key = match node {
-                Node::Track(i) => Some(instrument_key(project, i, &cx)),
-                Node::Bus(_) => None,
+                Node::Track(i) if !plan.taps.iter().any(|t| t.track == i) => Some(instrument_key(project, i, &cx)),
+                _ => None,
             };
             let source = match (node, active) {
                 (Node::Track(i), true) => {
-                    let cached = cache.and_then(|c| c.map.get(&cache_key.unwrap()));
+                    let cached = cache.zip(cache_key).and_then(|(c, k)| c.map.get(&k));
                     Some(match cached {
                         Some(c) => Source::Cached(c.clone()),
                         // 音频音轨：整轨干声一次铺好（同一工程再次渲染时取自缓存，不再解码）。
@@ -900,7 +916,9 @@ impl Renderer {
                             Source::Cached(Arc::new(Cached::new(audio)))
                         }
                         None if project.tracks[i].instrument.trim().starts_with("plugin:") => {
-                            Source::Live(Box::new(LiveInstrument::new(project, i, &cx, beats, start)?))
+                            let mut live = LiveInstrument::new(project, i, &cx, beats, start)?;
+                            live.taps = plan.taps.iter().filter(|t| t.track == i).map(|_| Arc::new(std::sync::Mutex::new(Tape { start, ..Default::default() }))).collect();
+                            Source::Live(Box::new(live))
                         }
                         None => Source::Worker(Worker::spawn(Arc::clone(shared.get_or_insert_with(|| Arc::new(project.clone()))), i, cx.clone(), beats, start)),
                     })
@@ -924,6 +942,7 @@ impl Renderer {
                 law,
                 keys,
                 inputs: Vec::new(),
+                tap_inputs: Vec::new(),
                 readers: Vec::new(),
                 pos: start,
                 wet: Tape { start, ..Default::default() },
@@ -950,6 +969,7 @@ impl Renderer {
             law: master_gains,
             keys: master_keys.iter().map(|k| k.map(|n| index[&n])).collect(),
             inputs: Vec::new(),
+            tap_inputs: Vec::new(),
             readers: Vec::new(),
             pos: start,
             wet: Tape { start, ..Default::default() },
@@ -973,6 +993,14 @@ impl Renderer {
         for s in 0..strips.len() {
             for k in strips[s].keys.clone().into_iter().flatten() {
                 strips[k].readers.push(s);
+            }
+        }
+        for tap in &plan.taps {
+            let from = index[&Node::Track(tap.track)];
+            let to = tap.to.map_or(master, |b| index[&Node::Bus(b)]);
+            if let Some(Source::Live(l)) = &strips[from].source {
+                let tape = l.taps[tap.index].clone();
+                strips[to].tap_inputs.push((from, tape));
             }
         }
 
@@ -1036,10 +1064,19 @@ impl Renderer {
             for k in st.keys.iter().flatten() {
                 need[*k] = need[*k].max(target[s]);
             }
+            for (from, _) in &st.tap_inputs {
+                need[*from] = need[*from].max(target[s]);
+            }
         }
         for (s, &to) in target.iter().enumerate() {
             if self.strips[s].active {
                 self.advance(s, to)?;
+            }
+        }
+        // 直接输出的带子只有读它的总线读：读过的丢掉。
+        for st in &self.strips {
+            for (_, tape) in &st.tap_inputs {
+                lock(tape).trim(st.pos);
             }
         }
         // 每个节点的输出只留还没被读的部分。
@@ -1072,6 +1109,18 @@ impl Renderer {
                 from.out.read(a, &mut tmp);
                 let send_lanes = edge.send.as_ref().and_then(|name| from.lanes.sends.get(name));
                 mix_into(&mut buf, &tmp, a, &self.cx, edge.level_db, send_lanes);
+            }
+            for (from, tape) in &self.strips[s].tap_inputs {
+                let from = &self.strips[*from];
+                if from.muted || !from.active {
+                    continue;
+                }
+                lock(tape).read(a, &mut tmp);
+                for c in 0..2 {
+                    for (d, x) in buf.channel_mut(c).iter_mut().zip(tmp.channel(c)) {
+                        *d += *x;
+                    }
+                }
             }
             let keys: Vec<Option<AudioBuffer<f32>>> = self.strips[s]
                 .keys

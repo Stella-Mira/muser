@@ -1410,6 +1410,13 @@ fn cmd_routing(path: &str) -> Result<()> {
         println!("  {src}{} ⇒ {}", fx(effects), outs.join("，"));
     }
     println!("  master{} → 主增益 {:+.1} dB", fx(&p.master_effects), p.master_gain_db);
+    if !plan.taps.is_empty() {
+        println!("插件的直接输出（@outputs 的 bus，不经过音轨的效果器与推子）：");
+        for t in &plan.taps {
+            let to = t.to.map_or("master".to_string(), |b| format!("[{}]", p.buses[b].name));
+            println!("  {} 第 {} 路 ⇒ {to}", name(Node::Track(t.track)), t.index + 1);
+        }
+    }
     if !plan.sidechains.is_empty() {
         println!("侧链：");
         for s in &plan.sidechains {

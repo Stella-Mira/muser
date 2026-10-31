@@ -329,6 +329,12 @@ fn with_solo(p: &Project, solo: &BTreeSet<String>) -> Project {
             down.entry(e.from).or_default().push(Node::Bus(b));
         }
     }
+    // 插件的直接输出也算"送进"那条总线。
+    for t in &plan.taps {
+        if let Some(b) = t.to {
+            down.entry(Node::Track(t.track)).or_default().push(Node::Bus(b));
+        }
+    }
     let reaches_solo = |start: Node| {
         let mut stack = vec![start];
         let mut seen = BTreeSet::new();
