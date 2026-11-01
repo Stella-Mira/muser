@@ -277,7 +277,7 @@ pub(crate) fn percent_decode(s: &str) -> String {
 
 fn serve(port: u16, open: bool, sample_rate: u32) -> Result<()> {
     // 只绑定本机回环地址。
-    let server = tiny_http::Server::http(("127.0.0.1", port)).map_err(|e| anyhow!("无法监听 127.0.0.1:{port}: {e}"))?;
+    let (server, port) = crate::web::bind(port)?;
     let url = format!("http://127.0.0.1:{port}/");
     println!("muser poly 音色编辑器已启动：{url}  （只监听本机，无鉴权；Ctrl+C 退出）");
     println!("音色库：{}", poly_library::dir().display());

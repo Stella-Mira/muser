@@ -51,6 +51,7 @@
 | 插件的参数、选项文字 | `muser plugin params <插件> --filter <词>`、`muser plugin values <插件> <参数>` | `list_plugin_params`、`plugin_param_values` |
 | 某个参数到底起什么作用 | `muser audition ... --param <名> --values ...` | `audition` |
 | 各轨音量是否均衡 | `muser mix-report <file>` | `mix_report` |
+| 信号怎么走：每条轨 / 总线送到哪、发送量、侧链、处理顺序 | `muser routing <file>` | `get_routing` |
 | 编曲好不好：密度、音区、和弦、重复、冲突与建议 | `muser analyze <file> [--audio]` | `analyze` |
 | 有哪些现成的鼓型 / 动机（loop），拿一个放进工程 | `muser loop list [--style S]`、`muser loop show <名字> [--abc]` | — |
 | 让人画一段动机 / 鼓型，或对着麦克风哼一段（编辑器，存到项目） | `muser loop edit --open` | — |
@@ -64,6 +65,8 @@
 
 加 `--json` 得到机器可读输出。`validate` 会指出越界参数和未知乐器的具体位置，例如
 `tracks[0].effects[0]: reverb.mix = 1.8 超出范围 [0, 1]`。
+`validate` 与 `render` 还会用 `⚠` 列出合法但多半不是本意的地方（不改退出码）：ABC 小节时值和拍号对不上、
+段落里的内容只占一小段又没写 `length`（之后就不出声了）、音符远在乐器推荐音域之外、`render` 后主输出削波。**看到 ⚠ 先确认再往下走。**
 
 ## 核心心智模型
 

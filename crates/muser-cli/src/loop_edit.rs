@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use muser_engine::{loop_library, RenderSettings};
 use serde_json::{json, Value};
 
@@ -170,7 +170,7 @@ fn handle(mut req: tiny_http::Request, cx: &Ctx) {
 
 pub fn serve(initial: Option<String>, base: Option<PathBuf>, port: u16, open: bool, sample_rate: u32) -> Result<()> {
     // 只绑定本机回环地址。
-    let server = tiny_http::Server::http(("127.0.0.1", port)).map_err(|e| anyhow!("无法监听 127.0.0.1:{port}: {e}"))?;
+    let (server, port) = crate::web::bind(port)?;
     let url = format!("http://127.0.0.1:{port}/");
     println!("muser loop 编辑器已启动：{url}  （只监听本机，无鉴权；Ctrl+C 退出）");
     println!("项目 loop：{}   全局 loop：{}", loop_library::project_dir(base.as_deref()).display(), loop_library::dir().display());

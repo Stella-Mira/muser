@@ -6,6 +6,23 @@ use std::collections::BTreeMap;
 
 use serde_json::Value;
 
+/// 在 127.0.0.1 上监听 `port`；被占用时依次试后面 20 个端口。返回服务和实际端口。
+pub(crate) fn bind(port: u16) -> anyhow::Result<(tiny_http::Server, u16)> {
+    let mut last = None;
+    for p in (port..=port.saturating_add(20)).take(21) {
+        match tiny_http::Server::http(("127.0.0.1", p)) {
+            Ok(s) => {
+                if p != port {
+                    println!("端口 {port} 被占用，改用 {p}");
+                }
+                return Ok((s, p));
+            }
+            Err(e) => last = Some(e),
+        }
+    }
+    Err(anyhow::anyhow!("无法监听 127.0.0.1:{port}（以及后面 20 个端口）: {}", last.map(|e| e.to_string()).unwrap_or_default()))
+}
+
 pub(crate) fn header(name: &str, value: &str) -> tiny_http::Header {
     tiny_http::Header::from_bytes(name.as_bytes(), value.as_bytes()).expect("合法的 header")
 }

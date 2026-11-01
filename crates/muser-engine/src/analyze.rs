@@ -91,7 +91,10 @@ pub struct Clash {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct AudioStat {
+    /// 积分响度（有门限：比整段平均低 10 LU 以上的部分不算）。
     pub lufs: f64,
+    /// 平均电平（dB，不设门限）：大部分很安静、只有几下很响的段落，它比 lufs 低得多。
+    pub rms_db: f64,
     pub centroid_hz: f64,
     pub low_pct: f64,
     pub mid_pct: f64,
@@ -274,7 +277,9 @@ pub fn analyze(project: &Project, audio: bool, settings: RenderSettings) -> Resu
                 part.channel_mut(c)[..n].copy_from_slice(&buf.channel(c)[fa..fa + n]);
             }
             let an = crate::audition::analyze(&part, sr, (0, part.num_frames()));
-            AudioStat { lufs: (an.lufs * 10.0).round() / 10.0, centroid_hz: an.centroid_hz.round(), low_pct: an.low_pct.round(), mid_pct: an.mid_pct.round(), high_pct: an.high_pct.round() }
+            let ms = (0..2).map(|c| part.channel(c).iter().map(|x| f64::from(*x).powi(2)).sum::<f64>()).sum::<f64>() / (2 * part.num_frames()) as f64;
+            let rms_db = (10.0 * ms.max(1e-12).log10() * 10.0).round() / 10.0;
+            AudioStat { lufs: (an.lufs * 10.0).round() / 10.0, rms_db, centroid_hz: an.centroid_hz.round(), low_pct: an.low_pct.round(), mid_pct: an.mid_pct.round(), high_pct: an.high_pct.round() }
         });
         let vel: Vec<f32> = tracks.iter().zip(&vels).flat_map(|(t, v)| t.2.iter().zip(v).filter(|(n, _)| inside(n)).map(|(_, &x)| x)).collect();
         energy_raw.push((onsets as f64 / nbars as f64, stats.len() as f64, if vel.is_empty() { 0.0 } else { f64::from(vel.iter().sum::<f32>()) / vel.len() as f64 }));
@@ -495,24 +500,34 @@ fn findings(sections: &[SectionReport], repeated_bar: &[bool], prints: &[Vec<(us
     if distinct.len() == 1 && nonempty >= 8 {
         out.push(format!("全曲只有一个和弦（{}）：如果不是刻意的 drone / 单和弦律动，可以在 sections 里写和弦进行", distinct.iter().next().unwrap()));
     }
-    // 音区重叠：同一段里两条旋律 / 和声音轨长时间发声、中位音高相差不到 5 个半音。
-    let mut masked: BTreeMap<(String, String), Vec<String>> = BTreeMap::new();
+    // 音区重叠：同一段里两条旋律 / 和声音轨长时间发声、中位音高相差不到 5 个半音。同一条轨和几条轨都重叠时合成一句。
+    let mut masked: BTreeMap<String, BTreeMap<String, (u8, u8, Vec<String>)>> = BTreeMap::new();
     for s in sections {
         let ts: Vec<&TrackStat> = s.tracks.iter().filter(|t| !t.drums && t.sounding >= 0.5).collect();
         for (i, x) in ts.iter().enumerate() {
             for y in ts.iter().skip(i + 1) {
                 if let (Some(a), Some(b)) = (x.median, y.median) {
                     if a.abs_diff(b) < 5 {
-                        masked.entry((x.name.clone(), y.name.clone())).or_default().push(s.name.clone());
+                        let e = masked.entry(x.name.clone()).or_default().entry(y.name.clone()).or_insert((a, b, Vec::new()));
+                        if !e.2.contains(&s.name) {
+                            e.2.push(s.name.clone());
+                        }
                     }
                 }
             }
         }
     }
-    for ((a, b), secs) in masked {
-        let mut secs = secs;
+    for (a, with) in masked {
+        let ma = with.values().next().map_or(0, |w| w.0);
+        let others: Vec<String> = with.iter().map(|(b, (_, mb, _))| format!("{b}（中位 {}）", name(*mb))).collect();
+        let mut secs: Vec<String> = with.values().flat_map(|w| w.2.clone()).collect();
         secs.dedup();
-        out.push(format!("{a} 与 {b} 在 {} 里同一音区长时间同时发声，可能互相掩蔽：拉开八度、换转位，或让一个休息", secs.join("、")));
+        let mut seen = std::collections::HashSet::new();
+        secs.retain(|x| seen.insert(x.clone()));
+        out.push(format!(
+            "{a}（中位 {}）与 {} 在 {} 里同一音区（中位音高相差不到 5 个半音）长时间同时发声，可能互相掩蔽：拉开八度、换转位，或让一个休息",
+            name(ma), others.join("、"), secs.join("、")
+        ));
     }
     let clashes: usize = sections.iter().map(|s| s.clashes.len()).sum();
     if clashes > 0 {

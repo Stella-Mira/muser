@@ -531,10 +531,11 @@ impl Muser {
         match sessions.get(&p.project_id) {
             Some(proj) => match muser_engine::validate(proj) {
                 Ok(()) => Ok(ok_text(format!(
-                    "OK: tempo {}, {} 轨, 时长 {:.2} 拍",
+                    "OK: tempo {}, {} 轨, 时长 {:.2} 拍{}",
                     proj.tempo,
                     proj.tracks.len(),
-                    proj.duration_beats().0
+                    proj.duration_beats().0,
+                    muser_engine::warnings(proj).iter().map(|w| format!("\n⚠ {w}")).collect::<String>()
                 ))),
                 Err(e) => Ok(user_err(e.to_string())),
             },
@@ -740,8 +741,12 @@ dialect=yue2：YuE2 原生写法（Vocal / Ins 两个单音声部、和弦记号
         };
         match render_to_wav(proj, &p.output_path, settings) {
             Ok((seconds, peak_db)) => Ok(ok_text(format!(
-                "已渲染 → {}: {:.2}s, 峰值 {:.1} dBFS",
-                p.output_path, seconds, peak_db
+                "已渲染 → {}: {:.2}s, 峰值 {:.1} dBFS{}{}",
+                p.output_path,
+                seconds,
+                peak_db,
+                if peak_db > 0.0 { format!("\n⚠ 主输出削波（峰值 {peak_db:+.1} dBFS）：降 master_gain_db 或各轨 gain_db，或主总线最后放 limiter（ceiling_db -1）；用 mix_report 看是哪一路") } else { String::new() },
+                muser_engine::warnings(proj).iter().map(|w| format!("\n⚠ {w}")).collect::<String>()
             ))),
             Err(e) => Ok(user_err(format!("渲染失败: {e}"))),
         }

@@ -15,7 +15,36 @@ use crate::{Beats, Note};
 
 /// 解析出的音符（拍，相对 clip 起点）。
 pub fn parse(text: &str) -> Result<Vec<Note>, String> {
-    Parser::new(text)?.run()
+    Ok(Parser::new(text)?.run()?.0)
+}
+
+/// 小节时值和拍号对不上的地方（`meter` 是工程一小节的拍数，ABC 写了 `M:` 时用它）。只看用 `|` 分开的小节：
+/// 中间的小节要正好一小节；第一小节可以短（弱起），不能长；最后一段不能长。有反复、一二房时不查。
+pub fn bar_problems(text: &str, meter: f64) -> Result<Vec<String>, String> {
+    let mut p = Parser::new(text)?;
+    if !p.meter_given {
+        p.bar = meter;
+    }
+    let (notes, marks, repeats) = p.run()?;
+    if repeats || marks.is_empty() {
+        return Ok(Vec::new());
+    }
+    let end = notes.iter().map(|n| n.start.0 + n.length.0).fold(0.0, f64::max).max(marks.last().map_or(0.0, |m| m.1));
+    let mut starts = vec![0.0];
+    starts.extend(marks.iter().map(|m| m.1));
+    starts.push(end);
+    let beats = |x: f64| format!("{}", (x * 1000.0).round() / 1000.0);
+    let units = |x: f64| (x / p.unit * 100.0).round() / 100.0;
+    let mut out = Vec::new();
+    let last = starts.len() - 2;
+    for (k, w) in starts.windows(2).enumerate() {
+        let len = w[1] - w[0];
+        let wrong = if k == 0 || k == last { len > p.bar + 1e-6 } else { (len - p.bar).abs() > 1e-6 };
+        if wrong && len > 1e-9 {
+            out.push(format!("第 {} 小节 {} 拍（{} 个单位时值），一小节应为 {} 拍（{} 个）", k + 1, beats(len), units(len), beats(p.bar), units(p.bar)));
+        }
+    }
+    Ok(out)
 }
 
 /// 调号：每个音名（C..B）的默认升降（半音）。
@@ -94,6 +123,8 @@ struct Parser<'a> {
     unit: f64,
     /// 一小节多少拍。
     bar: f64,
+    /// 写了 `M:`。
+    meter_given: bool,
     key: [i32; 7],
 }
 
@@ -109,7 +140,7 @@ struct Pending {
 
 impl<'a> Parser<'a> {
     fn new(text: &'a str) -> Result<Self, String> {
-        let (mut unit, mut bar, mut key) = (0.5, 4.0, [0; 7]);
+        let (mut unit, mut bar, mut key, mut meter_given) = (0.5, 4.0, [0; 7], false);
         let mut body = Vec::new();
         for (ln, raw) in text.lines().enumerate() {
             let line = raw.split('%').next().unwrap_or("").trim_end();
@@ -118,7 +149,11 @@ impl<'a> Parser<'a> {
                 let (field, value) = (line.as_bytes()[0] as char, line[2..].trim());
                 match field {
                     'L' => unit = fraction(value).ok_or_else(|| format!("第 {} 行 L: 应为分数，如 1/8", ln + 1))? * 4.0,
-                    'M' => bar = fraction(value).map_or(bar, |f| f * 4.0),
+                    'M' => {
+                        if let Some(f) = fraction(value) {
+                            (bar, meter_given) = (f * 4.0, true);
+                        }
+                    }
                     'K' => {
                         key = key_signature(value).map_err(|e| format!("第 {} 行 {e}", ln + 1))?;
                     }
@@ -131,10 +166,11 @@ impl<'a> Parser<'a> {
                 body.push((ln + 1, line));
             }
         }
-        Ok(Parser { body, unit, bar, key })
+        Ok(Parser { body, unit, bar, meter_given, key })
     }
 
-    fn run(&self) -> Result<Vec<Note>, String> {
+    /// 音符，小节线的位置（行号, 拍），有没有反复 / 一二房。
+    fn run(&self) -> Result<(Vec<Note>, Vec<(usize, f64)>, bool), String> {
         // 先把整段展开成"小节流"处理反复：记下每个 token 的位置，遇到 :| 回到 |: 处再走一遍。
         let tokens = self.tokens()?;
         let order = repeat_order(&tokens);
@@ -148,11 +184,16 @@ impl<'a> Parser<'a> {
         let mut broken: Option<f64> = None;
         // 被连音线连起来、等着下一个同音高延长的音（notes 里的下标）。
         let mut tied: Vec<usize> = Vec::new();
+        let mut marks = Vec::new();
+        let repeats = tokens.iter().any(|(_, t)| matches!(t, Tok::RepeatStart | Tok::RepeatEnd | Tok::Ending(_)));
         for &i in &order {
             let (line, tok) = &tokens[i];
             let at = |m: &str| format!("第 {line} 行：{m}");
             match tok {
-                Tok::Bar => accidentals = [None; 128],
+                Tok::Bar => {
+                    accidentals = [None; 128];
+                    marks.push((*line, t));
+                }
                 Tok::RepeatStart | Tok::RepeatEnd | Tok::Ending(_) => accidentals = [None; 128],
                 Tok::Dynamic(v) => velocity = *v,
                 Tok::Accent => accent = true,
@@ -173,6 +214,8 @@ impl<'a> Parser<'a> {
                 }
                 Tok::Broken(f) => broken = Some(*f),
                 Tok::BarRest(n) => {
+                    // 多小节休止：中间的小节线也记下。
+                    marks.extend((1..*n).map(|k| (*line, t + self.bar * f64::from(k))));
                     t += self.bar * f64::from(*n);
                     tied.clear();
                 }
@@ -214,7 +257,7 @@ impl<'a> Parser<'a> {
         if notes.is_empty() && order.is_empty() {
             return Err("ABC 里没有音符（K: 之后写旋律，如 \"L:1/8\\nK:Am\\nA2 cB e2 dc |\"）".into());
         }
-        Ok(notes)
+        Ok((notes, marks, repeats))
     }
 
     /// 连音（tuplet）与附点节奏（broken rhythm）对时值的影响。
@@ -542,6 +585,19 @@ fn repeat_order(tokens: &[(usize, Tok)]) -> Vec<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bar_lengths_against_the_meter() {
+        // 9/8：第 1 小节 10 个八分、第 2 小节 8 个。
+        let p = bar_problems("L:1/8\nK:Dm\nD2 E2 F2 G2 A2 | c2 z2 D2 E2 |", 4.5).unwrap();
+        assert_eq!(p.len(), 2, "{p:?}");
+        assert!(p[0].starts_with("第 1 小节 5 拍（10 个单位时值），一小节应为 4.5 拍（9 个）"), "{p:?}");
+        // 对的：弱起、整小节休止、M: 优先于工程拍号、有反复不查。
+        assert!(bar_problems("L:1/8\nK:C\nG | c4 e4 | Z2 | g8 |", 4.0).unwrap().is_empty());
+        assert!(bar_problems("M:3/4\nL:1/4\nK:C\nC D E | F G A |", 4.0).unwrap().is_empty());
+        assert!(bar_problems("L:1/8\nK:C\n|: c4 :|", 4.0).unwrap().is_empty());
+        assert!(bar_problems("L:1/8\nK:C\nc4 e4 g4", 4.0).unwrap().is_empty(), "没有小节线不查");
+    }
 
     fn pitches(abc: &str) -> Vec<u8> {
         parse(abc).unwrap().iter().map(|n| n.pitch).collect()

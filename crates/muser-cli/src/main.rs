@@ -574,7 +574,12 @@ fn cmd_analyze(project_path: &str, audio: bool, json: bool) -> Result<()> {
         println!();
         print!("[{label}] 第 {}–{} 小节  能量 {}  密度 {} 音/小节  重复 {:.0}%  和弦 {}/小节", s.bar, s.bar + s.bars - 1, s.energy, s.density, s.repeated * 100.0, s.chord_changes_per_bar);
         match &s.audio {
-            Some(a) => println!("  {:.1} LUFS  重心 {} Hz  低/中/高 {}/{}/{}%", a.lufs, a.centroid_hz, a.low_pct, a.mid_pct, a.high_pct),
+            Some(a) => {
+                println!("  {:.1} LUFS  重心 {} Hz  低/中/高 {}/{}/{}%", a.lufs, a.centroid_hz, a.low_pct, a.mid_pct, a.high_pct);
+                if a.rms_db < a.lufs - 6.0 {
+                    println!("  平均电平 {:.1} dB：这一段大部分很安静（LUFS 只算响的部分，被少数几下拉高了）", a.rms_db);
+                }
+            }
             None => println!(),
         }
         let mut chords = s.chords.clone();
@@ -698,6 +703,10 @@ fn cmd_render(project_path: &str, output: &str, sample_rate: u32, tail: f64, see
         "已渲染 '{}' → {output}: {:.2}s, 峰值 {:.1} dBFS",
         project.name, seconds, peak_db
     );
+    if peak_db > 0.0 {
+        println!("⚠ 主输出削波（峰值 {peak_db:+.1} dBFS）：降 master_gain_db 或各轨 gain_db，或主总线最后放 limiter（ceiling_db -1）。详情：muser mix-report {project_path}");
+    }
+    print_warnings(&project);
     Ok(())
 }
 
@@ -711,7 +720,15 @@ fn cmd_validate(project_path: &str) -> Result<()> {
         project.tracks.len(),
         project.duration_beats().0
     );
+    print_warnings(&project);
     Ok(())
+}
+
+/// 不妨碍渲染、但多半不是本意的地方（不改退出码）。
+fn print_warnings(project: &Project) {
+    for w in muser_engine::warnings(project) {
+        println!("⚠ {w}");
+    }
 }
 
 fn note_label(n: muser_engine::NoteConvention) -> &'static str {

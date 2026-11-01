@@ -108,6 +108,79 @@ pub fn validate_score(project: &muser_core::Project) -> Result<(), EngineError> 
     Ok(())
 }
 
+/// 不妨碍渲染、但多半不是本意的地方（`muser validate` / `render` 打印，不改退出码）：
+/// ABC 小节时值与拍号对不上、段落里的内容只占一小段且没写 `length`、音符远在乐器推荐音域之外。
+pub fn warnings(project: &muser_core::Project) -> Vec<String> {
+    let mut out = Vec::new();
+    let bar = project.time_signature.beats_per_bar();
+    let abc_bars = |at: String, abc: &Option<String>, out: &mut Vec<String>| {
+        if let Some(a) = abc {
+            out.extend(muser_core::abc::bar_problems(a, bar).unwrap_or_default().into_iter().map(|p| format!("{at}.abc: {p}")));
+        }
+    };
+    for (ti, t) in project.tracks.iter().enumerate() {
+        for (ci, c) in t.clips.iter().enumerate() {
+            abc_bars(format!("tracks[{ti}].clips[{ci}]"), &c.abc, &mut out);
+        }
+        for (key, part) in &t.parts {
+            abc_bars(format!("tracks[{ti}].parts.{key}"), &part.abc, &mut out);
+            // 只有 notes / abc 的内容不循环：没写 length 时只放一遍。
+            if part.length.is_some() || part.grid.is_some() || part.drummer.is_some() || part.chordal.is_some() || part.end.is_some() {
+                continue;
+            }
+            let mut notes = part.notes.clone();
+            notes.extend(part.abc.as_deref().and_then(|a| muser_core::abc::parse(a).ok()).unwrap_or_default());
+            let end = notes.iter().map(|n| n.start.0 + n.length.0).fold(0.0, f64::max);
+            let name = key.split('#').next().unwrap_or(key);
+            let lens: Vec<f64> = if name == "*" {
+                project.sections.values().map(|s| f64::from(s.bars) * bar).collect()
+            } else {
+                project.sections.get(name).map(|s| f64::from(s.bars) * bar).into_iter().collect()
+            };
+            if let Some(len) = lens.into_iter().fold(None, |m: Option<f64>, l| Some(m.map_or(l, |m| m.max(l)))) {
+                if end > 0.0 && end < len * 0.85 {
+                    let loop_len = (end / bar).ceil() * bar;
+                    out.push(format!(
+                        "tracks[{ti}].parts.{key}: 内容只有 {} 拍，段落有 {} 拍（只占 {:.0}%，之后不出声）：要循环铺满就写 \"length\": {}；只在开头出声可以不管",
+                        fmt_beats(end), fmt_beats(len), end / len * 100.0, fmt_beats(loop_len)
+                    ));
+                }
+            }
+        }
+    }
+    // 音域：按展开后的音符（ABC、grid、鼓手、曲式移调都算上）。
+    if let Ok(p) = arrange::arranged(project) {
+        for (ti, t) in p.tracks.iter().enumerate() {
+            let Some(info) = instrument::describe(&t.instrument).filter(|i| i.family != "drums" && !i.name.starts_with("sfz:")) else { continue };
+            let (lo, hi) = info.range;
+            let notes: Vec<u8> = (0..t.clips.len()).filter_map(|ci| clip_notes(&p, ti, ci).ok()).flatten().map(|n| n.pitch).collect();
+            // 推荐音域是软的：差一点没关系，超出一个五度以上才提示。
+            let outside: Vec<u8> = notes.iter().copied().filter(|&n| n + RANGE_SLACK < lo || n > hi.saturating_add(RANGE_SLACK)).collect();
+            if let (Some(&min), Some(&max)) = (outside.iter().min(), outside.iter().max()) {
+                out.push(format!(
+                    "tracks[{ti}] '{}': {} 个音远在 {} 的推荐音域 {}–{} 之外（超出一个五度以上），在 {}–{}：能发声，但可能很轻或不自然",
+                    t.name, outside.len(), info.name, note_name(lo), note_name(hi), note_name(min), note_name(max)
+                ));
+            }
+        }
+    }
+    out
+}
+
+/// 超出推荐音域多少半音以内不提示。
+const RANGE_SLACK: u8 = 7;
+
+fn fmt_beats(b: f64) -> String {
+    let r = (b * 100.0).round() / 100.0;
+    if r.fract() == 0.0 { format!("{r:.0}") } else { format!("{r}") }
+}
+
+/// MIDI 音高 → 音名（C4 = 60）。
+fn note_name(p: u8) -> String {
+    const N: [&str; 12] = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+    format!("{}{}（{p}）", N[usize::from(p % 12)], i32::from(p / 12) - 1)
+}
+
 pub fn validate(project: &muser_core::Project) -> Result<(), EngineError> {
     validate_score(project)?;
     tuning::build(project).map_err(|e| EngineError::Core(muser_core::CoreError::Invalid(e)))?;
@@ -976,6 +1049,21 @@ mod tests {
             let diff: f64 = (0..2).map(|c| (0..n).map(|k| f64::from(wet.channel(c)[k] - dry.channel(c)[k]).powi(2)).sum::<f64>()).sum();
             assert!(diff > energy(&dry, 0, n) * 1e-3, "{name}: 声音没变");
         }
+    }
+
+    /// 不阻止渲染的提示：远超音域、part 只占一小段、ABC 小节和拍号对不上；写对了就没有。
+    #[test]
+    fn warnings_point_at_likely_mistakes() {
+        let p = |v: serde_json::Value| proj(v);
+        let w = warnings(&p(serde_json::json!({ "tempo": 120, "sections": { "a": { "bars": 8, "chords": "Am" } }, "form": ["a"],
+            "tracks": [{ "name": "lead", "instrument": "wind.flute", "parts": { "a": { "abc": "L:1/8\nK:Am\nc4 A2 c2 | d4 B2 G2 A2 |" } } },
+                       { "name": "bleep", "instrument": "poly.random_bleeps", "clips": [{ "start": 0, "length": 4, "notes": [{ "pitch": 105, "start": 0, "length": 1 }] }] }] })));
+        assert!(w.iter().any(|x| x.contains("parts.a.abc: 第 2 小节 5 拍")), "{w:?}");
+        assert!(w.iter().any(|x| x.contains("只占") && x.contains("\"length\"")), "{w:?}");
+        assert!(w.iter().any(|x| x.contains("'bleep'") && x.contains("A7")), "{w:?}");
+        let ok = warnings(&p(serde_json::json!({ "tempo": 120, "sections": { "a": { "bars": 2, "chords": "Am" } }, "form": ["a"],
+            "tracks": [{ "name": "lead", "instrument": "wind.flute", "parts": { "a": { "abc": "L:1/8\nK:Am\nc4 A2 c2 | d4 B2 G2 |" } } }] })));
+        assert!(ok.is_empty(), "{ok:?}");
     }
 
     #[test]

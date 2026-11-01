@@ -1409,7 +1409,7 @@ pub fn serve(path: &str, settings: RenderSettings, port: u16, open: bool, device
         wake: Condvar::new(),
     });
     // 只绑定本机回环地址。
-    let server = tiny_http::Server::http(("127.0.0.1", port)).map_err(|e| anyhow!("无法监听 127.0.0.1:{port}: {e}"))?;
+    let (server, port) = crate::web::bind(port)?;
     let url = format!("http://127.0.0.1:{port}/");
     {
         let s = Arc::clone(&shared);

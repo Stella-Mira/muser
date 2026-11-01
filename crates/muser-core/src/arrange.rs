@@ -287,6 +287,8 @@ impl Part {
         }
         if let Some(c) = &self.chordal {
             Chordal::parse(c).map_err(|e| format!("{at}.{e}"))?;
+        } else if self.grid.is_some() && self.step.is_some() {
+            return Err(format!("{at}: grid 的步长写在 grid 里面：\"grid\": {{ \"step\": {}, … }}（part 上的 step / octave 只用于 chordal）", self.step.unwrap_or(0.25)));
         } else if self.step.is_some() || self.octave.is_some() {
             return Err(format!("{at}: step / octave 只用于 chordal"));
         }
