@@ -151,6 +151,20 @@ pub fn warnings(project: &muser_core::Project) -> Vec<String> {
     // 音域：按展开后的音符（ABC、grid、鼓手、曲式移调都算上）。
     if let Ok(p) = arrange::arranged(project) {
         for (ti, t) in p.tracks.iter().enumerate() {
+            // 鼓组：这套鼓没有的鼓键不出声。
+            if let Some(keys) = instrument::drum_kit_keys(&t.instrument) {
+                let mut missing: Vec<u8> = (0..t.clips.len()).filter_map(|ci| clip_notes(&p, ti, ci).ok()).flatten().map(|n| n.pitch).filter(|k| !keys.contains(k)).collect();
+                let count = missing.len();
+                missing.sort_unstable();
+                missing.dedup();
+                if count > 0 {
+                    out.push(format!(
+                        "tracks[{ti}] '{}': {count} 个音落在 {} 没有的鼓键上（{}），不出声：换成这套鼓有的鼓键（`muser instruments {}`），或换一套鼓",
+                        t.name, t.instrument.trim(), missing.iter().map(|k| k.to_string()).collect::<Vec<_>>().join("、"), t.instrument.trim()
+                    ));
+                }
+                continue;
+            }
             let Some(info) = instrument::describe(&t.instrument).filter(|i| i.family != "drums" && !i.name.starts_with("sfz:")) else { continue };
             let (lo, hi) = info.range;
             let notes: Vec<u8> = (0..t.clips.len()).filter_map(|ci| clip_notes(&p, ti, ci).ok()).flatten().map(|n| n.pitch).collect();
@@ -1061,6 +1075,9 @@ mod tests {
         assert!(w.iter().any(|x| x.contains("parts.a.abc: 第 2 小节 5 拍")), "{w:?}");
         assert!(w.iter().any(|x| x.contains("只占") && x.contains("\"length\"")), "{w:?}");
         assert!(w.iter().any(|x| x.contains("'bleep'") && x.contains("A7")), "{w:?}");
+        let kit = warnings(&p(serde_json::json!({ "tempo": 120, "tracks": [{ "name": "dust", "instrument": "drums.909",
+            "clips": [{ "start": 0, "length": 4, "grid": { "shaker": "x...", "hat": "x..." } }] }] })));
+        assert!(kit.iter().any(|x| x.contains("'dust'") && x.contains("没有的鼓键上（70）")), "{kit:?}");
         let ok = warnings(&p(serde_json::json!({ "tempo": 120, "sections": { "a": { "bars": 2, "chords": "Am" } }, "form": ["a"],
             "tracks": [{ "name": "lead", "instrument": "wind.flute", "parts": { "a": { "abc": "L:1/8\nK:Am\nc4 A2 c2 | d4 B2 G2 |" } } }] })));
         assert!(ok.is_empty(), "{ok:?}");
