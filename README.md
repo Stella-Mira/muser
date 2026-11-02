@@ -46,7 +46,7 @@ You don't need to know how to program. If you use an AI agent that can run comma
 
 > Update muser to the latest release.
 
-muser is open source and free. Every piece of the *Electric Sheep* suite was made this way, by agents using muser.
+muser is open source and free. Every piece of the *Electric Sheep* suite was made this way, by agents using muser — watch it on [YouTube](https://youtu.be/yqsVhDZyROQ) or [Bilibili](https://www.bilibili.com/video/BV1EB4w6uEFu/).
 
 ## Features
 

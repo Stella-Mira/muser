@@ -44,7 +44,7 @@ AI agent 通过写、改一份工程 JSON 来表达音乐意图，引擎把它�
 
 > 把 muser 更新到最新版本。
 
-muser 开源、完全免费。《电子羊》四部曲的每一首，都是 agent 这样用 muser 做出来的。
+muser 开源、完全免费。《电子羊》四部曲的每一首，都是 agent 这样用 muser 做出来的——[B 站观看](https://www.bilibili.com/video/BV1EB4w6uEFu/) · [YouTube](https://youtu.be/yqsVhDZyROQ)。
 
 ## 能做什么
 
