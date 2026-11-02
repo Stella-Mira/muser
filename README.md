@@ -15,6 +15,39 @@ vendored as a git submodule.
 
 ---
 
+## Use it with your AI agent (no coding needed)
+
+You don't need to know how to program. If you use an AI agent that can run commands on your computer
+(Claude Code, Codex, Cursor, Kiro, WorkBuddy, …), just tell it what you want in plain words.
+
+**1. Install** — say to your agent:
+
+> Install muser from GitHub: https://github.com/claw-works/muser . Download the release for my computer, set it up so I can run `muser` from anywhere, and read its SKILLS.md.
+
+**2. Make music** — for example:
+
+> Use muser to write me a mind-bending electronic track, about two minutes long. Render it and open it so I can listen.
+
+> Use muser to write a gentle lo-fi piano piece for studying, 90 BPM, with soft drums and vinyl crackle.
+
+> Use muser to compose a short film-trailer cue: quiet strings at first, then big drums, ending on one huge hit.
+
+**3. Change it** — describe what you hear, the agent edits the project:
+
+> The drums are too loud and the middle part is boring — add a breakdown and bring the melody back at the end.
+
+> Open it in `muser view` so I can adjust the volumes myself.
+
+**4. Take it with you**:
+
+> Export it as a WAV file and a MIDI file.
+
+**Update later**:
+
+> Update muser to the latest release.
+
+muser is open source and free. Every piece of the *Electric Sheep* suite was made this way, by agents using muser.
+
 ## Features
 
 - Multi-track arrangement: drums + synths + bass, multiple clips and notes

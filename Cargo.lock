@@ -951,7 +951,7 @@ dependencies = [
 
 [[package]]
 name = "muser-cli"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -964,7 +964,7 @@ dependencies = [
 
 [[package]]
 name = "muser-core"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -973,7 +973,7 @@ dependencies = [
 
 [[package]]
 name = "muser-engine"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "manguebyte",
  "muser-core",
@@ -987,7 +987,7 @@ dependencies = [
 
 [[package]]
 name = "muser-mcp"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "muser-core",
