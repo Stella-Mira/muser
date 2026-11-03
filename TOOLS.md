@@ -230,6 +230,7 @@ stdio server 注册即可。服务器初始化时会返回使用说明（instruc
 | `set_seed` | 设置工程随机种子（决定 random 自动化） |
 | `render` | 离线渲染为 WAV，返回时长/峰值 |
 | `export_midi` | 导出标准 MIDI 文件（音符与渲染一致，audio 音轨不导出） |
+| `export_daw` | 导出给 DAW：MIDI + 每轨分轨 WAV（24 位）+ 混音 + 导入说明（Live / Cubase / Logic 的步骤） |
 | `export_data` | 给可视化导出 JSON：每轨音符（秒）、段落、自动化曲线，可选每帧音量包络 |
 | `export_stems` | 分轨导出：每条没静音的音轨一个 WAV（带效果器与发送，不带主总线效果器，各轨同长） |
 | `analyze` | 听感报告：按段落的密度、音区、和弦、重复度、冲突与建议（`audio` 加响度与频谱重心） |

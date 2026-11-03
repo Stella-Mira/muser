@@ -66,7 +66,8 @@ Windows：`irm https://raw.githubusercontent.com/claw-works/muser/main/scripts/i
 | 本机音色库里的 poly 音色 | `muser poly list`、`muser poly show <名字>` | — |
 | 音频文件的格式、时长（换算成拍） | `muser audio <文件> [--tempo T]` | — |
 | 把编曲交给 DAW / 分析工具 | `muser midi <工程> [-o x.mid]` | `export_midi` |
-| 分轨交给 DAW 继续混音（每轨一个 WAV） | `muser render <工程> --stems <目录>` | `export_stems` |
+| 交给 DAW（Live / Cubase / Logic）接着做：MIDI + 分轨 + 混音 + 导入说明 | `muser export-daw <工程> -o <文件夹>` | `export_daw` |
+| 只要分轨（每轨一个 WAV） | `muser render <工程> --stems <目录>` | `export_stems` |
 | 给音乐配画面 / 做可视化（音符、段落、自动化、音量包络） | `muser export-data <工程> -o data.json [--fps 30]` | `export_data` |
 | 把乐谱交给读 ABC 的模型（如 YuE2） | `muser abc <工程> [--yue2 --vocal 旋律轨 --sections verse:8,chorus:8]` | `export_abc` |
 | 让人快速听一下草稿 | `muser play <file> [--seed N]`、`muser loop play <名字>` | — |

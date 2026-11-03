@@ -9,6 +9,7 @@ pub mod arrange;
 pub mod audio;
 pub mod audition;
 pub mod automate;
+pub mod daw;
 pub mod drummer;
 pub mod effects;
 pub mod export_data;

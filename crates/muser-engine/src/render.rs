@@ -1340,7 +1340,7 @@ pub struct Stem {
     pub peak_db: f64,
 }
 
-/// 分轨导出：每条没静音的音轨各渲染一个 WAV 到 `dir`（`01-名字.wav`…），带它自己的效果器、推子、声像，
+/// 分轨导出：每条没静音的音轨各渲染一个 24 位 WAV 到 `dir`（`01-名字.wav`…），带它自己的效果器、推子、声像，
 /// 以及它发送到总线的部分（混响、延迟随这条轨走）；侧链照常生效。**不带主总线效果器**（母带处理留给 DAW），
 /// 主输出音量与其自动化照旧。各轨长度相同（与整首一样长），在 DAW 里从 0 对齐即可。乐器只渲染一遍（缓存复用）。
 pub fn render_stems(
@@ -1367,7 +1367,7 @@ pub fn render_stems(
         let mut meta = wav_metadata(project, settings.sample_rate);
         meta.title = Some(name.clone());
         let file = std::fs::File::create(&path).map_err(|e| EngineError::Wav(format!("写不了 {}: {e}", path.display())))?;
-        wav::write_with_metadata(std::io::BufWriter::new(file), &audio, settings.sample_rate, WavFormat::Int16, &meta).map_err(|e| EngineError::Wav(format!("{e:?}")))?;
+        wav::write_with_metadata(std::io::BufWriter::new(file), &audio, settings.sample_rate, WavFormat::Int24, &meta).map_err(|e| EngineError::Wav(format!("{e:?}")))?;
         out.push(Stem { track: name, path, peak_db: decibels::gain_to_db(f64::from(audio.peak())) });
     }
     Ok(out)

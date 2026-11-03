@@ -269,6 +269,20 @@ enum Command {
         #[arg(short, long)]
         output: Option<String>,
     },
+    /// 导出给 DAW（Ableton Live、Cubase、Logic…）：一个文件夹，含全部音轨的 MIDI、每轨的分轨 WAV（stems，24 位）、整首混音和导入说明。
+    ExportDaw {
+        /// 工程文件路径（.json）。
+        project: String,
+        /// 输出文件夹。
+        #[arg(short, long)]
+        output: String,
+        /// 采样率。
+        #[arg(long, default_value_t = 48_000)]
+        sample_rate: u32,
+        /// 结尾余响秒数。
+        #[arg(long, default_value_t = 2.0)]
+        tail: f64,
+    },
     /// 给可视化导出数据（JSON）：每轨音符（秒）、段落、自动化曲线；加 --fps 再渲染一遍，附每帧的整体 / 低频音量包络（dB）。
     ExportData {
         /// 工程文件路径（.json）。
@@ -546,6 +560,31 @@ fn run() -> Result<()> {
         Command::New { output } => cmd_new(output.as_deref()),
         Command::SelfUpdate { check, version } => self_update::run(check, version),
         Command::Migrate { projects, from, write } => cmd_migrate(&projects, &from, write),
+        Command::ExportDaw { project, output, sample_rate, tail } => {
+            let p = load_project(&project)?;
+            let settings = RenderSettings { sample_rate, tail_seconds: tail, ..RenderSettings::default() };
+            let tty = std::io::IsTerminal::is_terminal(&std::io::stderr());
+            let mut progress = |name: &str, done: usize, total: usize| {
+                if tty {
+                    eprint!("\r分轨 {:3.0}%（{name}）{:24}", done as f64 * 100.0 / total.max(1) as f64, "");
+                }
+            };
+            let r = muser_engine::daw::export_daw(&p, std::path::Path::new(&output), settings, &mut progress);
+            if tty {
+                eprint!("\r{:80}\r", "");
+            }
+            let r = r.with_context(|| format!("导出失败: {project}"))?;
+            println!("已导出给 DAW → {output}/");
+            println!("  MIDI：{}", r.midi.display());
+            println!("  分轨：{} 条在 {}/stems/（24 位，从第 1 小节对齐）", r.stems.len(), output);
+            println!("  混音：{}", r.mix.display());
+            println!("  导入说明：{}", r.guide.display());
+            if !r.midi_skipped.is_empty() {
+                println!("  （{} 是音频轨，没有 MIDI，只在分轨里）", r.midi_skipped.join("、"));
+            }
+            print_warnings(&p);
+            Ok(())
+        }
         Command::ExportData { project, output, fps } => {
             let p = load_project(&project)?;
             let data = muser_engine::export_data::export(&p, fps, RenderSettings::default()).with_context(|| format!("导出失败: {project}"))?;

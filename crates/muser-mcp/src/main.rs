@@ -188,6 +188,15 @@ struct ExportMidiParams {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct ExportDawParams {
+    project_id: String,
+    /// 输出文件夹（不存在会建）。
+    output_dir: String,
+    /// 采样率，默认 48000。
+    sample_rate: Option<u32>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct ExportDataParams {
     project_id: String,
     /// 输出 JSON 文件路径。
@@ -742,6 +751,27 @@ dialect=yue2：YuE2 原生写法（Vocal / Ins 两个单音声部、和弦记号
         }
         let skipped = if m.skipped.is_empty() { String::new() } else { format!("；没有导出的 audio 音轨: {}", m.skipped.join(", ")) };
         Ok(ok_text(format!("已导出 → {}: {} 字节{skipped}", p.output_path, m.bytes.len())))
+    }
+
+    #[tool(description = "导出给 DAW（Ableton Live、Cubase、Logic…）：在 output_dir 写 <名字>.mid（全部乐器轨，含速度、拍号、段落标记）、\
+stems/NN-轨名.wav（每轨 24 位，带效果器与发送，不带主总线效果器，从第 1 小节对齐）、mix.wav 与 IMPORT.md（各 DAW 的导入步骤）。\
+用户说想在 DAW 里接着做、交给混音师时用。")]
+    fn export_daw(&self, Parameters(p): Parameters<ExportDawParams>) -> Result<CallToolResult, McpError> {
+        let Some(proj) = self.sessions.lock().unwrap().get(&p.project_id).cloned() else {
+            return Ok(user_err(format!("找不到工程 '{}'", p.project_id)));
+        };
+        let settings = RenderSettings { sample_rate: p.sample_rate.unwrap_or(48_000), ..RenderSettings::default() };
+        match muser_engine::daw::export_daw(&proj, std::path::Path::new(&p.output_dir), settings, &mut |_, _, _| {}) {
+            Ok(r) => Ok(ok_text(format!(
+                "已导出给 DAW → {}\nMIDI：{}\n分轨：{} 条（stems/）\n混音：{}\n导入说明：{}（把里面对应 DAW 的步骤转告用户）",
+                p.output_dir,
+                r.midi.display(),
+                r.stems.len(),
+                r.mix.display(),
+                r.guide.display()
+            ))),
+            Err(e) => Ok(user_err(format!("导出失败: {e}"))),
+        }
     }
 
     #[tool(description = "给可视化导出数据（JSON 文件）：tracks[].notes 为 [起点秒, MIDI 音高, 力度 0–127, 时长秒]（与渲染一致）、sections（起止秒）、\
