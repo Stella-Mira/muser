@@ -3,7 +3,12 @@
 Each release's notes on GitHub are the section for its tag below (the release workflow copies it).
 Write the next version's section here before tagging; the heading must be `## vX.Y.Z`.
 
-## v0.3.2
+## v0.4.0
+
+### New
+
+- **One-line install**: `curl -fsSL https://raw.githubusercontent.com/claw-works/muser/main/scripts/install.sh | sh` (Windows: `irm …/scripts/install.ps1 | iex`) downloads the right release, checks it against `SHA256SUMS.txt`, installs it under `~/.local/share/muser/<version>` (`%LOCALAPPDATA%\muser\<version>` on Windows) and puts `muser` and `muser-mcp` on `PATH`; Linux without ALSA gets the headless build.
+- **`muser self-update`** updates to the latest release through the same script (`--check` only looks, `--version` picks one).
 
 ### Fixes
 

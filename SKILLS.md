@@ -13,6 +13,11 @@
 
 你只在 Project JSON 这一层工作，不需要懂底层 DSP。
 
+用户让你安装或更新 muser 时：没装过就运行一行安装脚本（macOS / Linux：
+`curl -fsSL https://raw.githubusercontent.com/claw-works/muser/main/scripts/install.sh | sh`；
+Windows：`irm https://raw.githubusercontent.com/claw-works/muser/main/scripts/install.ps1 | iex`），装过就 `muser self-update`
+（`--check` 只查不装）。装完把脚本最后打印的几行（版本、命令在哪、要不要先 `export PATH`）用大白话转告用户。
+
 ## 先听后写：和人一起创作的流程
 
 音乐创作是感性的：**先拿草稿给人听，再写整首**。不要一上来就编配完整的曲子。

@@ -22,7 +22,7 @@ You don't need to know how to program. If you use an AI agent that can run comma
 
 **1. Install** — say to your agent:
 
-> Install muser from GitHub: https://github.com/claw-works/muser . Download the release for my computer, set it up so I can run `muser` from anywhere, and read its SKILLS.md.
+> Install muser from GitHub (https://github.com/claw-works/muser) with its install script, then read its SKILLS.md.
 
 **2. Make music** — for example:
 
@@ -81,6 +81,25 @@ muser is open source and free. Every piece of the *Electric Sheep* suite was mad
 - Two AI interfaces: **CLI** (shell calls) and **MCP server** (direct tool calls from the agent)
 
 ## Quick start
+
+### One-line install
+
+macOS / Linux:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/claw-works/muser/main/scripts/install.sh | sh
+```
+
+Windows (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/claw-works/muser/main/scripts/install.ps1 | iex
+```
+
+The script downloads the latest release for your system, checks it against `SHA256SUMS.txt`, installs it under
+`~/.local/share/muser/<version>` (Windows: `%LOCALAPPDATA%\muser\<version>`) and puts `muser` and `muser-mcp` on your `PATH`.
+The docs for agents are in `~/.local/share/muser/current/SKILLS.md`. Update later with `muser self-update`
+(`muser self-update --check` only looks). On Linux without ALSA (servers, Docker) it picks the headless build.
 
 ### Download and run (no Rust needed)
 

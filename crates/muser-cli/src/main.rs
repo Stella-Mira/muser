@@ -14,6 +14,7 @@
 mod loop_edit;
 mod play;
 mod poly;
+mod self_update;
 mod view;
 mod web;
 
@@ -265,6 +266,15 @@ enum Command {
         #[arg(short, long)]
         output: Option<String>,
     },
+    /// 更新到 GitHub 上的最新版本（运行官方安装脚本：下载、校验 SHA256、切换版本；需要 curl）。
+    SelfUpdate {
+        /// 只查有没有新版本，不安装。
+        #[arg(long)]
+        check: bool,
+        /// 装指定版本（如 v0.4.0），而不是最新。
+        #[arg(long)]
+        version: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -507,6 +517,7 @@ fn run() -> Result<()> {
         }
         Command::Effects { name, json } => cmd_effects(name.as_deref(), json),
         Command::New { output } => cmd_new(output.as_deref()),
+        Command::SelfUpdate { check, version } => self_update::run(check, version),
         Command::Routing { project } => cmd_routing(&project),
         Command::Analyze { project, audio, json } => cmd_analyze(&project, audio, json),
         Command::Abc { project, output, yue2, chords, no_chords, tracks, vocal, ins, sections, key, vocal_octave } => {

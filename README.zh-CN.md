@@ -20,7 +20,7 @@ AI agent 通过写、改一份工程 JSON 来表达音乐意图，引擎把它�
 
 **1. 安装**——对你的 agent 说：
 
-> 帮我安装 GitHub 上的 muser：https://github.com/claw-works/muser 。下载适合我电脑的版本，配置好让我在任何地方都能运行 `muser`，再读一下它的 SKILLS.md。
+> 用安装脚本帮我安装 GitHub 上的 muser（https://github.com/claw-works/muser），再读一下它的 SKILLS.md。
 
 **2. 写音乐**——比如：
 
@@ -80,6 +80,24 @@ muser 开源、完全免费。《电子羊》四部曲的每一首，都是 agen
 - 两种 AI 接口：**CLI**（shell 调用）和 **MCP server**（agent 直接工具调用）
 
 ## 快速上手
+
+### 一行安装
+
+macOS / Linux：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/claw-works/muser/main/scripts/install.sh | sh
+```
+
+Windows（PowerShell）：
+
+```powershell
+irm https://raw.githubusercontent.com/claw-works/muser/main/scripts/install.ps1 | iex
+```
+
+脚本下载适合这台机器的最新发行包，用 `SHA256SUMS.txt` 校验，装到 `~/.local/share/muser/<版本>`（Windows 是 `%LOCALAPPDATA%\muser\<版本>`），
+并把 `muser`、`muser-mcp` 放进 `PATH`。给 agent 的文档在 `~/.local/share/muser/current/SKILLS.md`。以后用 `muser self-update` 更新
+（`muser self-update --check` 只查不装）。没有 ALSA 的 Linux（服务器、Docker）自动装 headless 版。
 
 ### 下载即用（不需要装 Rust）
 
