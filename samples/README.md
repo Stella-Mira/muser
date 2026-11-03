@@ -17,6 +17,7 @@
 | [`ni-acoustic-drums/`](#ni-acoustic-drums) | Native Instruments Acoustic Drums（Kontakt 库）的鼓 loop 放在音频轨上，muser 配贝斯与键盘（需本机装好这个库） |
 | [`sketches/`](#sketches) | 草稿 A/B：ABC 旋律 + grid 贝斯 + 鼓手 + humanize，几行 JSON 一段 |
 | [`tuning/`](#tuning) | 调律：纯律的众赞歌、四分之三音的木卡姆 Rast |
+| [`v0.4/`](#v04) | 0.4 的新功能：段落各有拍号（4/4、7/8、5/4）、跨段落不重置的 polymeter，导出给 DAW |
 
 wav 不入库，用脚本一次渲染（生成在工程旁边，同名 `.wav`）：
 
@@ -210,3 +211,17 @@ muser play samples/abc/kesh-jig.muser.json
 | `just-chorale` | D 大调五度纯律（`"scale": "just", "key": "D"`）：风琴和弦与弦乐旋律，大三度是纯的 5/4，和声比平均律更"静"。把 `tuning` 删掉再听一遍对比 |
 | `maqam-rast` | 木卡姆 Rast：`custom` 把 E 和 B 各降 50 音分（四分之三音），ABC 照常写 E、B。笛子旋律、大提琴持续音、鼓 |
 
+## v0.4
+
+0.4 新功能的示范曲。
+
+| 工程 | 内容 |
+|---|---|
+| `odd-clockwork` | 104 BPM，D 多利亚。主歌、副歌 4/4，过门段 `turn` 7/8（`"time_signature": { "numerator": 7, "denominator": 8 }`），间奏 `odd` 5/4：和弦、贝斯、键盘、鼓都按各段的小节长度走。两条 CR-78 时钟——7 步的 claves 和 13 步的 rim——写在 `parts."*"` 里、加了 `"align": "global"`，从第 1 拍一直数下去，穿过三种拍号也不重置，和主节奏不停地错开又对上 |
+
+```bash
+muser play samples/v0.4/odd-clockwork.muser.json
+muser analyze samples/v0.4/odd-clockwork.muser.json      # 小节号按各段拍号
+muser export-daw samples/v0.4/odd-clockwork.muser.json -o odd-clockwork-daw   # MIDI（含拍号变化）+ 分轨 + 混音 + IMPORT.md
+muser export-data samples/v0.4/odd-clockwork.muser.json -o odd-clockwork.json  # 给可视化：音符、段落（含拍号）、自动化
+```
