@@ -94,7 +94,8 @@ pub fn parse(text: &str) -> Syl {
     }
     // 剩下的元音字母（中间的其它辅音忽略）。
     let jqx = matches!(ini, "j" | "q" | "x" | "y");
-    let apical = matches!(ini, "zh" | "ch" | "sh" | "r" | "z" | "c" | "s") && rest == "i";
+    // zhi chi shi ri zi ci si 的 i 是舌尖元音（不是 i）；有韵尾的（sing、shin）不算。
+    let apical = matches!(ini, "zh" | "ch" | "sh" | "r" | "z" | "c" | "s") && rest == "i" && coda == Coda::None;
     let letters: Vec<char> = rest.chars().filter(|c| "aeiouüy".contains(*c)).collect();
     let mut vowels: Vec<f32> = Vec::new();
     for (k, &c) in letters.iter().enumerate() {
@@ -316,6 +317,7 @@ mod tests {
         assert_eq!(p("ming").coda, Coda::Nasal);
         assert_eq!(p("ming").onset, Onset::Nasal);
         assert_eq!(p("sing").coda, Coda::Nasal);
+        assert_eq!(&p("sing").vowels[..1], &[I], "sing 的 i 是 i");
         assert!(matches!(p("ta").onset, Onset::Plosive { aspirated: true, .. }));
         assert!(matches!(p("da").onset, Onset::Plosive { aspirated: false, .. }));
         assert!(matches!(p("zhong").onset, Onset::Affricate { aspirated: false, .. }));
