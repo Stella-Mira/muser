@@ -118,7 +118,7 @@ Windows：`irm https://raw.githubusercontent.com/claw-works/muser/main/scripts/i
 | 管乐 | [wind.md](skills/instruments/wind.md) | `wind.flute` `wind.sax` `wind.trumpet` … |
 | 人声 | [choir.md](skills/instruments/choir.md) | `choir.aah` `choir.ooh` `choir.solo` |
 | 音频文件（录音、采样、loop） | [audio.md](skills/audio.md) | `"instrument": "audio"`，clip 写 `"audio": { "file": "vocal.wav" }` |
-| 帮用户录人声（准备、录、对齐、混音、结尾、导出） | [recording.md](skills/recording.md) | `muser view` 的录人声面板、`muser takes`、工程的 `lyrics` |
+| 帮用户录人声（准备、录、检查节奏、混音、氛围、收尾、交付的方法） | [recording.md](skills/recording.md) | `muser view` 的录人声面板、`muser takes`、工程的 `lyrics` |
 | SFZ 音色库 | [sfz.md](skills/instruments/sfz.md) | `sfz:/path/to/Piano.sfz` 或相对 `MUSER_SFZ_PATH` 的路径（内置采样器，无需插件） |
 | 外置 VSTi | [plugin.md](skills/instruments/plugin.md) | `plugin:/usr/lib/vst3/Surge XT.vst3` |
 
