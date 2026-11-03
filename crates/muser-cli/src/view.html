@@ -1387,17 +1387,19 @@ function drawTrackLanes() {
     let wmax = 0;
     for (const c of t.clips) for (const v of c.wave || []) wmax = Math.max(wmax, v);
     // part 展开的块：同一个 part（如 verse、verse#2、*）同一种底色、圆角，块上写 part 名（像 FL Studio 的 pattern）。
-    const partKeys = [...new Set((t.parts || []).map((p) => p.key))];
+    // 只标出被重复用到的 part（用了两次以上）；只用一次的就是普通 clip，不画成块。
+    const uses = {}; for (const p of t.parts || []) uses[p.key] = (uses[p.key] || 0) + 1;
+    const partKeys = [...new Set((t.parts || []).map((p) => p.key))].filter((k) => uses[k] > 1);
     const partTint = ["rgba(255,255,255,0)", "rgba(255,255,255,.10)", "rgba(0,0,0,.22)", "rgba(255,255,255,.18)", "rgba(0,0,0,.36)"];
     for (const c of t.clips) {
       const x0 = x(c.start), x1 = x(c.start + c.length);
-      const part = (t.parts || []).find((p) => Math.abs(p.start - c.start) < 1e-6);
+      const part = (t.parts || []).find((p) => Math.abs(p.start - c.start) < 1e-6 && uses[p.key] > 1);
       g.fillStyle = colors[0];
       if (part) {
         const k = partKeys.indexOf(part.key), w = Math.max(1, x1 - x0 - 2);
         g.beginPath(); g.roundRect(x0 + 1, 5, w, H - 10, Math.min(5, w / 2)); g.fill();
         g.fillStyle = partTint[k % partTint.length]; g.fill();
-        if (partKeys.length > 1 && w > 26) {
+        if (w > 26) {
           g.save(); g.clip(); g.font = "600 9px system-ui"; g.textBaseline = "top"; g.fillStyle = "rgba(255,255,255,.55)";
           g.fillText(part.key, x0 + 5, 7); g.restore();
         }
