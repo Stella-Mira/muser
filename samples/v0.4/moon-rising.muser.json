@@ -1,5 +1,6 @@
 {
   "name": "moon-rising",
+  "lyrics": "月亮升起来了\n\n[A] 月亮升起来了，风吹过山冈\n[A] 星星登上天空，照着回家路\n[B] 我在等你，你在哪里，你在哪\n[A] 月亮升起来了，风吹过山冈\n[尾声] （哼）",
   "tempo": 80,
   "seed": 11,
   "sections": {
@@ -33,7 +34,7 @@
                  "a#3": { "chordal": "c - - -", "step": 1, "octave": 3, "velocity": 0.45 },
                  "outro": { "chordal": "c - - -", "step": 1, "octave": 3, "velocity": 0.35 } } },
     { "name": "hum", "instrument": "choir.ooh", "gain_db": -19, "sends": { "hall": -6 },
-      "parts": { "b": { "chordal": "c - - -", "step": 1, "octave": 5, "velocity": 0.35 },
-                 "outro": { "chordal": "c - - -", "step": 1, "octave": 5, "velocity": 0.3 } } }
+      "parts": { "b": { "chordal": "c - - -", "step": 1, "octave": 4, "velocity": 0.3 },
+                 "outro": { "chordal": "c - - -", "step": 1, "octave": 4, "velocity": 0.25 } } }
   ]
 }

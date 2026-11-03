@@ -38,6 +38,10 @@ pub struct Project {
     /// 工程名。
     #[serde(default)]
     pub name: String,
+    /// 歌词原文（给人看：`muser view` 里显示，录人声时对着唱），如 `"[a]\n月亮升起来了\n风吹过山冈"`。
+    /// 不影响声音；唱哪个音节写在音符的 `lyric` / ABC 的 `w:` 行里。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lyrics: Option<String>,
     /// 速度（每分钟四分音符数）。
     pub tempo: f64,
     /// 拍号，默认 4/4。
@@ -85,6 +89,7 @@ impl Project {
         Self {
             schema_version: default_schema_version(),
             name: name.into(),
+            lyrics: None,
             tempo,
             time_signature: TimeSignature::default(),
             master_gain_db: 0.0,

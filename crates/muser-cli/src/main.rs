@@ -15,6 +15,7 @@ mod loop_edit;
 mod play;
 mod poly;
 mod self_update;
+mod takes;
 mod view;
 mod web;
 
@@ -294,6 +295,14 @@ enum Command {
         #[arg(long)]
         fps: Option<u32>,
     },
+    /// 录人声的每一遍（muser view 里录的，在 recordings/）：长度、响度、实际唱的部分、工程用了没有；--clean 删掉没用到的。
+    Takes {
+        /// 工程文件路径（.json）。
+        project: String,
+        /// 删掉工程没用到的录音（先问过用户）。
+        #[arg(long)]
+        clean: bool,
+    },
     /// 把为旧版 muser 写的工程换算到当前版本（听起来和在旧版里一样）。默认只列出改动，加 --write 才写回。
     Migrate {
         /// 工程 JSON（可以多个）。
@@ -560,6 +569,7 @@ fn run() -> Result<()> {
         Command::New { output } => cmd_new(output.as_deref()),
         Command::SelfUpdate { check, version } => self_update::run(check, version),
         Command::Migrate { projects, from, write } => cmd_migrate(&projects, &from, write),
+        Command::Takes { project, clean } => takes::run(&project, clean),
         Command::ExportDaw { project, output, sample_rate, tail } => {
             let p = load_project(&project)?;
             let settings = RenderSettings { sample_rate, tail_seconds: tail, ..RenderSettings::default() };

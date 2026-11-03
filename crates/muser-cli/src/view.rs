@@ -450,6 +450,8 @@ struct State {
     file: Option<Project>,
     /// 工作副本 = 文件 + 页面改动。
     working: Option<Project>,
+    /// 录好、贴到工作副本里还没保存的录音（保存时写进工程文件）。
+    takes: Vec<crate::takes::Take>,
     solo: BTreeSet<String>,
     /// 有新的渲染请求（渲染线程处理后清除）。
     requested: bool,
@@ -580,9 +582,10 @@ impl Shared {
                     (Some(f), Some(w)) => !diff(f, w).is_empty(),
                     _ => false,
                 };
-                if had_changes {
-                    eprintln!("[view] 工程文件已变化，丢弃页面上未保存的改动");
+                if had_changes || !st.takes.is_empty() {
+                    eprintln!("[view] 工程文件已变化，丢弃页面上未保存的改动（录音文件还在 recordings/ 里，可以再贴上）");
                 }
+                st.takes.clear();
                 // 结构变了（音轨/总线增删）时，独奏可能指向别的节点：清空。
                 let same_shape = st.file.as_ref().is_some_and(|f| f.tracks.len() == p.tracks.len() && f.buses.len() == p.buses.len());
                 if !same_shape {
@@ -756,22 +759,27 @@ impl Shared {
         let mut st = self.state.lock().unwrap();
         let (Some(file), Some(working)) = (&st.file, &st.working) else { return Err("工程尚未成功加载".into()) };
         let changes = diff(file, working);
-        if changes.is_empty() {
+        if changes.is_empty() && st.takes.is_empty() {
             return Ok(0);
         }
+        let takes = st.takes.clone();
         let write = || -> Result<()> {
             let text = std::fs::read_to_string(&self.path)?;
             let mut v: Value = serde_json::from_str(&text)?;
             apply_to_json(&mut v, &changes, working)?;
+            for t in &takes {
+                crate::takes::place_json(&mut v, t, working.tempo)?;
+            }
             std::fs::write(&self.path, serde_json::to_string_pretty(&v)? + "\n")?;
             Ok(())
         };
         write().map_err(|e| format!("保存失败: {e:#}"))?;
         st.file = st.working.clone();
+        st.takes.clear();
         // 自己写的文件不触发重新加载。
         st.file_mtime = mtime(&self.path);
-        eprintln!("[view] 已保存 {} 项改动到 {}", changes.len(), self.path.display());
-        Ok(changes.len())
+        eprintln!("[view] 已保存 {} 项改动到 {}", changes.len() + takes.len(), self.path.display());
+        Ok(changes.len() + takes.len())
     }
 
     /// 可选的音色：内置乐器与 `$MUSER_SFZ_PATH` 里的 SFZ（直接换）、扫描到的 VST3 / CLAP 乐器插件（在插件窗口里选）。
@@ -1118,9 +1126,37 @@ impl Shared {
         }
     }
 
+    /// 存下一遍录音，贴到工作副本里（待保存）。
+    fn record(&self, track: &str, start: f64, wav: &[u8]) -> Result<crate::takes::Take, String> {
+        let take = crate::takes::store(&self.path, track, start, wav).map_err(|e| format!("{e:#}"))?;
+        self.use_take(&take.file)?;
+        Ok(take)
+    }
+
+    /// 把清单里的某一遍贴到工作副本（换掉重叠的片段），待保存。
+    fn use_take(&self, file: &str) -> Result<(), String> {
+        let take = crate::takes::list(&self.path).into_iter().find(|t| t.file == file).ok_or_else(|| format!("没有这一遍：{file}"))?;
+        let mut st = self.state.lock().unwrap();
+        let working = st.working.as_mut().ok_or("工程尚未成功加载")?;
+        let mut next = working.clone();
+        crate::takes::place(&mut next, &take).map_err(|e| format!("{e:#}"))?;
+        *working = next;
+        st.takes.retain(|t| !(t.track == take.track && (t.start - take.start).abs() < 1e-9));
+        st.takes.push(take);
+        self.request_render(&mut st);
+        Ok(())
+    }
+
+    fn delete_take(&self, file: &str) -> Result<(), String> {
+        let st = self.state.lock().unwrap();
+        let in_use = st.working.as_ref().is_some_and(|w| crate::takes::referenced(w, file)) || st.file.as_ref().is_some_and(|f| crate::takes::referenced(f, file));
+        crate::takes::delete(&self.path, file, in_use).map_err(|e| format!("{e:#}"))
+    }
+
     fn reset(&self) {
         let mut st = self.state.lock().unwrap();
         st.working = st.file.clone();
+        st.takes.clear();
         st.solo.clear();
         self.request_render(&mut st);
     }
@@ -1171,6 +1207,10 @@ impl Shared {
             out["file_values"] = Value::Object(fv);
         }
         out["changes"] = json!(changes);
+        out["takes_pending"] = json!(st.takes);
+        let in_use = |f: &str| st.working.as_ref().is_some_and(|w| crate::takes::referenced(w, f));
+        out["takes"] = json!(crate::takes::list(&self.path).iter().map(|t| json!({ "take": t, "in_use": in_use(&t.file) })).collect::<Vec<_>>());
+        out["lyrics"] = json!(st.file.as_ref().and_then(|f| f.lyrics.clone()));
         out["solo"] = json!(st.solo);
         out["project_path"] = json!(self.path.display().to_string());
         out["sound_edit"] = json!(cfg!(all(target_os = "macos", feature = "host")));
@@ -1365,12 +1405,60 @@ fn handle(shared: &Arc<Shared>, mut req: tiny_http::Request, port: u16) {
                 Err(e) => respond_json(req, 400, &json!({ "error": e })),
             }
         }
+        (Method::Post, "/api/record") => {
+            let q = query(&url);
+            let track = q.get("track").map(|t| percent_decode(t)).filter(|t| !t.trim().is_empty()).unwrap_or_else(|| "vocal".into());
+            let start = q.get("start").and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0);
+            let mut body = Vec::new();
+            let limit = 256u64 << 20;
+            if std::io::Read::read_to_end(&mut std::io::Read::take(req.as_reader(), limit + 1), &mut body).is_err() || body.len() as u64 > limit {
+                return respond_json(req, 413, &json!({ "error": "录音太大或读取失败" }));
+            }
+            match shared.record(&track, start, &body) {
+                Ok(t) => respond_json(req, 200, &json!({ "ok": true, "take": t })),
+                Err(e) => respond_json(req, 400, &json!({ "error": e })),
+            }
+        }
+        (Method::Post, "/api/takes/use" | "/api/takes/delete") => {
+            let body = read_body::<Value>(&mut req);
+            let file = body.as_ref().ok().and_then(|b| b.get("file")).and_then(Value::as_str).unwrap_or_default().to_string();
+            let r = if url.starts_with("/api/takes/use") { shared.use_take(&file) } else { shared.delete_take(&file) };
+            match r {
+                Ok(()) => respond_json(req, 200, &json!({ "ok": true })),
+                Err(e) => respond_json(req, 400, &json!({ "error": e })),
+            }
+        }
         (Method::Post, "/api/reset") => {
             shared.reset();
             respond_json(req, 200, &json!({ "ok": true }));
         }
         _ => respond_json(req, 404, &json!({ "error": "not found" })),
     }
+}
+
+/// URL 查询参数的 %XX 解码（轨名可以是中文）。
+fn percent_decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        match b[i] {
+            b'%' if i + 2 < b.len() => {
+                match u8::from_str_radix(std::str::from_utf8(&b[i + 1..i + 3]).unwrap_or("zz"), 16) {
+                    Ok(v) => {
+                        out.push(v);
+                        i += 3;
+                        continue;
+                    }
+                    Err(_) => out.push(b'%'),
+                }
+            }
+            b'+' => out.push(b' '),
+            c => out.push(c),
+        }
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 /// 启动联动服务，阻塞运行直到进程被中断。`open` 时用系统浏览器打开页面。
@@ -1400,6 +1488,7 @@ pub fn serve(path: &str, settings: RenderSettings, port: u16, open: bool, device
             file: None,
             working: None,
             solo: BTreeSet::new(),
+            takes: Vec::new(),
             requested: false,
             rendering: false,
             version: 0,

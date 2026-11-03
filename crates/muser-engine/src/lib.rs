@@ -75,6 +75,8 @@ pub use instrument::{
 pub use params::Automatable;
 /// 渲染结果用的立体声缓冲（来自 manguebyte）。
 pub use manguebyte::prelude::AudioBuffer;
+/// WAV 读写（`muser view` 录人声用）。
+pub use manguebyte::prelude::{wav, WavFormat};
 pub use mix::{mix_report, MixReport, NodeReport};
 pub use render::{render, render_cached, render_loudness, render_metered, Level, NodeLoudness, render_to_wav, render_to_wav_with_progress, EngineError, Meter, RenderCache, RenderSettings, Renderer, METER_WINDOW};
 
