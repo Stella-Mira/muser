@@ -308,6 +308,9 @@ enum Command {
         /// 删掉工程没用到的录音（先问过用户）。
         #[arg(long)]
         clean: bool,
+        /// 逐句检查节奏：工程里的人声和引导旋律（带 lyric 的轨）差多少毫秒。
+        #[arg(long)]
+        timing: bool,
     },
     /// 把为旧版 muser 写的工程换算到当前版本（听起来和在旧版里一样）。默认只列出改动，加 --write 才写回。
     Migrate {
@@ -602,7 +605,7 @@ fn run() -> Result<()> {
         Command::New { output } => cmd_new(output.as_deref()),
         Command::SelfUpdate { check, version } => self_update::run(check, version),
         Command::Migrate { projects, from, write } => cmd_migrate(&projects, &from, write),
-        Command::Takes { project, clean } => takes::run(&project, clean),
+        Command::Takes { project, clean, timing } => takes::run(&project, clean, timing),
         Command::Clip { command } => match command {
             ClipCommand::Split { project, track, at } => clipedit::run(&project, &track, Some(at), None, None, None),
             ClipCommand::Move { project, track, clip, to, by_ms } => clipedit::run(&project, &track, None, Some(clip), to, by_ms),

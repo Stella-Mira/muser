@@ -361,6 +361,30 @@ pub struct KaraokeToken {
     pub end: f64,
 }
 
+/// 引导旋律：第一条写了 `lyric` 的音轨上带歌词的音符，`(起点秒, 终点秒, 音高)`，按时间排好（和弦只取最高音）。
+/// 卡拉 OK 和 `muser takes --timing` 都以它为准。
+pub fn guide_notes(project: &muser_core::Project) -> Vec<(f64, f64, u8)> {
+    let Ok(p) = crate::arrange::arranged(project) else { return Vec::new() };
+    let spb = 60.0 / p.tempo;
+    let mut out: Vec<(f64, f64, u8)> = Vec::new();
+    for (ti, t) in p.tracks.iter().enumerate() {
+        for (ci, c) in t.clips.iter().enumerate() {
+            for n in crate::clip_notes(&p, ti, ci).unwrap_or_default() {
+                if n.lyric.is_some() {
+                    let s = c.start.0 + n.start.0;
+                    out.push((s * spb, (s + n.length.0.min(c.length.0 - n.start.0)) * spb, n.pitch));
+                }
+            }
+        }
+        if !out.is_empty() {
+            break;
+        }
+    }
+    out.sort_by(|a, b| a.0.total_cmp(&b.0).then(b.2.cmp(&a.2)));
+    out.dedup_by(|b, a| (a.0 - b.0).abs() < 1e-9);
+    out
+}
+
 /// 卡拉 OK 歌词：唱的时间来自第一条写了 `lyric` 的音轨（展开后的音符），显示的字来自工程的 `lyrics`——
 /// 每一行（去掉 `[A]` 这类段落标记）里的汉字一个字对一个音节，英文按词；字数和音节数对不上时显示音节本身。
 /// 没有 `lyrics` 时按音节显示，休止超过一拍半就换行。
