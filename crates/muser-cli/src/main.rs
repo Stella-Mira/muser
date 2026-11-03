@@ -266,6 +266,18 @@ enum Command {
         #[arg(short, long)]
         output: Option<String>,
     },
+    /// 把为旧版 muser 写的工程换算到当前版本（听起来和在旧版里一样）。默认只列出改动，加 --write 才写回。
+    Migrate {
+        /// 工程 JSON（可以多个）。
+        #[arg(required = true)]
+        projects: Vec<String>,
+        /// 工程是为哪个版本写的，如 0.3.0。
+        #[arg(long)]
+        from: String,
+        /// 把改动写回工程文件。
+        #[arg(long)]
+        write: bool,
+    },
     /// 更新到 GitHub 上的最新版本（运行官方安装脚本：下载、校验 SHA256、切换版本；需要 curl）。
     SelfUpdate {
         /// 只查有没有新版本，不安装。
@@ -518,6 +530,7 @@ fn run() -> Result<()> {
         Command::Effects { name, json } => cmd_effects(name.as_deref(), json),
         Command::New { output } => cmd_new(output.as_deref()),
         Command::SelfUpdate { check, version } => self_update::run(check, version),
+        Command::Migrate { projects, from, write } => cmd_migrate(&projects, &from, write),
         Command::Routing { project } => cmd_routing(&project),
         Command::Analyze { project, audio, json } => cmd_analyze(&project, audio, json),
         Command::Abc { project, output, yue2, chords, no_chords, tracks, vocal, ins, sections, key, vocal_octave } => {
@@ -1449,6 +1462,30 @@ fn cmd_routing(path: &str) -> Result<()> {
         println!("侧链：");
         for s in &plan.sidechains {
             println!("  {} 触发 {} 的 effects[{}]", name(s.key), name(s.node), s.effect);
+        }
+    }
+    Ok(())
+}
+
+fn cmd_migrate(projects: &[String], from: &str, write: bool) -> Result<()> {
+    use muser_engine::migrate;
+    for path in projects {
+        let text = fs::read_to_string(path).with_context(|| format!("读不了 {path}"))?;
+        let mut v: serde_json::Value = serde_json::from_str(&text).with_context(|| format!("{path} 不是合法的 JSON"))?;
+        let changes = migrate::migrate(&mut v, from).map_err(|e| anyhow::anyhow!(e))?;
+        if changes.is_empty() {
+            println!("{path}：从 {from} 到当前版本不用改");
+            continue;
+        }
+        println!("{path}：");
+        for c in &changes {
+            println!("  {}：{}", c.track, c.detail);
+        }
+        if write {
+            fs::write(path, serde_json::to_string_pretty(&v)? + "\n")?;
+            println!("  已写回");
+        } else {
+            println!("  （只是列出；加 --write 写回）");
         }
     }
     Ok(())

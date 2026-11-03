@@ -16,6 +16,7 @@ pub mod instrument;
 pub mod levels;
 pub mod loop_library;
 pub mod midi;
+pub mod migrate;
 pub mod mix;
 pub mod params;
 pub mod poly_patch;

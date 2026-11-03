@@ -17,6 +17,8 @@
 `curl -fsSL https://raw.githubusercontent.com/claw-works/muser/main/scripts/install.sh | sh`；
 Windows：`irm https://raw.githubusercontent.com/claw-works/muser/main/scripts/install.ps1 | iex`），装过就 `muser self-update`
 （`--check` 只查不装）。装完把脚本最后打印的几行（版本、命令在哪、要不要先 `export PATH`）用大白话转告用户。
+更新以后，旧版本写的工程可能听起来不一样（比如 0.3.1 校准了内置乐器音量）：问清工程是为哪个版本写的，
+`muser migrate <工程> --from 0.3.0` 先看要改什么，再加 `--write` 写回。
 
 ## 先听后写：和人一起创作的流程
 

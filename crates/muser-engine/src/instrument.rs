@@ -791,17 +791,32 @@ pub fn resolve_for(name: &str, params: &InstrumentParams, spec: &ProcessSpec) ->
     }
     let (info, mut patch) = lookup(trimmed).ok_or_else(|| InstrumentError::Unknown { name: name.to_string() })?;
     patch.apply(params).map_err(|detail| InstrumentError::Param { detail })?;
-    // 校准跟着乐器名（调了参数的预设仍按预设校准）；`synth.poly` 内嵌完整音色（`patch`）时，和某个预设一样就用那个预设的
-    // 校准（内嵌预设 = 预设本身），自己设计的音色不校准（音色库里存的音色照旧）。
-    let level_name = match &patch {
+    let trim = trim_of(&info, &patch, params);
+    let mut inst = patch.instantiate().map_err(|detail| InstrumentError::Load { detail })?;
+    inst.trim = decibels::db_to_gain(trim) as f32;
+    Ok(inst)
+}
+
+/// 这件内置乐器在输出端补的校准增益（dB）；SFZ、插件、音频轨、不认识的乐器为 0。`muser migrate` 用它把旧工程的 `gain_db` 换算过来。
+pub fn calibration_db(name: &str, params: &InstrumentParams) -> f64 {
+    let params = &*without_label(params);
+    let Some((info, mut patch)) = lookup(name.trim()) else { return 0.0 };
+    if patch.apply(params).is_err() {
+        return 0.0;
+    }
+    trim_of(&info, &patch, params)
+}
+
+/// 校准跟着乐器名（调了参数的预设仍按预设校准）；`synth.poly` 内嵌完整音色（`patch`）时，和某个预设一样就用那个预设的
+/// 校准（内嵌预设 = 预设本身），自己设计的音色不校准（音色库里存的音色照旧）。
+fn trim_of(info: &InstrumentInfo, patch: &Patch, params: &InstrumentParams) -> f64 {
+    let level_name = match patch {
         Patch::Poly(p) if info.name == "synth.poly" && params.contains_key("patch") => {
             poly::PRESETS.iter().find(|x| x.params == *p).map(|x| format!("poly.{}", slug(x.name)))
         }
         _ => Some(info.name.clone()),
     };
-    let mut inst = patch.instantiate().map_err(|detail| InstrumentError::Load { detail })?;
-    inst.trim = decibels::db_to_gain(level_name.map_or(0.0, |n| crate::levels::trim_db(&n))) as f32;
-    Ok(inst)
+    level_name.map_or(0.0, |n| crate::levels::trim_db(&n))
 }
 
 /// 用乐器自身的默认音色解析。
