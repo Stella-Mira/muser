@@ -313,6 +313,7 @@ pub fn analyze(project: &Project, audio: bool, settings: RenderSettings) -> Resu
     }
     let tells = tells(project, &sections, &tracks, &prints, &unhumanized, key, bar_beats);
     let mut findings = findings(&sections, &repeated_bar, &prints);
+    findings.splice(0..0, silent_sections(project, &sections, bar_beats));
     findings.retain(|f| !f.starts_with("各段响度只相差") && f != "没有发现明显的问题");
     findings.extend(tells.iter().filter(|t| t.hit).map(|t| format!("AI 味 #{} {}：{}", t.id, t.name, t.detail)));
     if findings.is_empty() {
@@ -467,6 +468,65 @@ fn tells(
     out
 }
 
+/// 几乎没有声音的段落（平均电平低于 −45 dB，或整段静音），并说出从工程里看得出的原因。
+/// 来自 dreamer 四首的教训：主输出音量曲线和音轨的淡入淡出叠在一起，一整段就没声了，agent 听不到。
+fn silent_sections(p: &Project, sections: &[SectionReport], bar_beats: f64) -> Vec<String> {
+    const QUIET_DB: f64 = -45.0;
+    let mut out = Vec::new();
+    for s in sections {
+        let Some(a) = &s.audio else { continue };
+        if a.lufs.is_finite() && a.rms_db >= QUIET_DB {
+            continue;
+        }
+        let (start, len) = ((s.bar - 1) as f64 * bar_beats, s.bars as f64 * bar_beats);
+        // 段内 8 个点的平均：自动化有值就用它，没有就是静态值。
+        let level = |autos: &[muser_core::Automation], target: &str, base: f64| {
+            let curve = autos.iter().find(|x| x.target == target).map(|x| {
+                let values: Vec<f64> = match &x.shape {
+                    muser_core::automation::Shape::Points { points, .. } => points.iter().map(|(_, v)| v.as_f64().unwrap_or(0.0)).collect(),
+                    _ => Vec::new(),
+                };
+                x.compile(&values, 0, start + len)
+            });
+            (0..8).map(|k| curve.as_ref().and_then(|c| c.value_at(start + (k as f64 + 0.5) / 8.0 * len)).unwrap_or(base)).sum::<f64>() / 8.0
+        };
+        let playing: Vec<&TrackStat> = s.tracks.iter().filter(|t| t.onsets_per_bar > 0.0 || t.sounding > 0.0).collect();
+        let mut why = Vec::new();
+        if playing.is_empty() {
+            why.push("这一段没有音符（form 里静音了，或 parts 没写到这一段）".to_string());
+        }
+        let master = level(&p.automation, "master_gain_db", p.master_gain_db);
+        if master < -24.0 {
+            why.push(format!("主输出音量在这里平均 {master:.0} dB"));
+        }
+        let low: Vec<String> = p
+            .tracks
+            .iter()
+            .filter(|t| playing.iter().any(|x| x.name == t.name))
+            .filter_map(|t| {
+                let g = level(&t.automation, "gain_db", t.gain_db);
+                (g < -30.0).then(|| format!("{} {g:.0} dB", t.name))
+            })
+            .collect();
+        if !low.is_empty() {
+            let more = if low.len() > 5 { format!(" 等 {} 条", low.len()) } else { String::new() };
+            why.push(format!("在响的轨音量很低（{}{more}）", low[..low.len().min(5)].join("、")));
+        }
+        if master < -24.0 && !low.is_empty() {
+            why.push("主输出曲线与轨的淡入淡出叠在一起".into());
+        }
+        let why = if why.is_empty() { "看不出原因：检查主输出与各轨的音量自动化、淡入淡出、效果器（门限、滤波）".to_string() } else { why.join("；") };
+        let level = if a.rms_db.is_finite() { format!("平均 {:.0} dB", a.rms_db) } else { "完全静音".into() };
+        out.push(format!(
+            "{}（第 {}–{} 小节）几乎没有声音（{level}）：{why}。如果是有意的留白，忽略这条",
+            s.name,
+            s.bar,
+            s.bar + s.bars - 1
+        ));
+    }
+    out
+}
+
 /// 把数字翻成建议。
 fn findings(sections: &[SectionReport], repeated_bar: &[bool], prints: &[Vec<(usize, i64, u8)>]) -> Vec<String> {
     let mut out = Vec::new();
@@ -557,6 +617,20 @@ fn findings(sections: &[SectionReport], repeated_bar: &[bool], prints: &[Vec<(us
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn warns_about_a_section_the_master_curve_silences() {
+        let p: Project = serde_json::from_value(serde_json::json!({ "tempo": 120,
+            "sections": { "a": { "bars": 2, "chords": "C" }, "gap": { "bars": 2, "chords": "C" } },
+            "form": ["a", "gap"],
+            "automation": [{ "target": "master_gain_db", "shape": "points", "curve": "step", "points": [[0, 0.0], [8, -80.0]] }],
+            "tracks": [{ "name": "pad", "instrument": "poly.juno_keys", "parts": { "*": { "chordal": "c - - -", "step": 1, "octave": 4 } } }] }))
+        .unwrap();
+        let r = analyze(&p, true, RenderSettings::default()).unwrap();
+        let hit: Vec<&String> = r.findings.iter().filter(|f| f.contains("几乎没有声音")).collect();
+        assert_eq!(hit.len(), 1, "{:?}", r.findings);
+        assert!(hit[0].starts_with("gap（第 3–4 小节）") && hit[0].contains("主输出音量"), "{hit:?}");
+    }
 
     #[test]
     fn sections_density_clashes_and_findings() {

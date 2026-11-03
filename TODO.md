@@ -8,7 +8,7 @@
    `muser self-update` 从 GitHub Releases 取最新版替换自己（校验 SHA256SUMS）。README 教非程序员对 agent 说"安装 / 更新 muser"，有官方路径 agent 做起来更稳。
 2. ✅（已完成）**旧工程迁移（`muser migrate`）**：把旧版本写的工程升到当前版本——目前是 0.3.1 的乐器音量校准（按校准前后的差补 `gain_db`，
    做法同 dreamer 的 `compensate.py`：自定义 patch 不动，补偿后 −80 dB 封底），以后格式或音量再变也走这里。默认只打印改动，`--write` 才写回。
-3. **静音段落提示**：`analyze --audio` 发现某段几乎静音（如 < −45 LUFS / rms）时主动提醒，并指出可能的原因
+3. ✅（已完成）**静音段落提示**：`analyze --audio` 发现某段几乎静音（如 < −45 LUFS / rms）时主动提醒，并指出可能的原因
    （来自 dreamer 四首的教训：主输出曲线与轨的淡入淡出叠加）。
 4. **分轨导出**：每条轨 / 总线各导出一个 WAV，交给 DAW。
 5. **WAV 写段落标记**（cue points，0.3.0 实测报告 P4-2）。
