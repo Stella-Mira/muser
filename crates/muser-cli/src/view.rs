@@ -1177,43 +1177,13 @@ impl Shared {
         let ci = num("clip").ok_or("缺 clip")? as usize;
         let mut st = self.state.lock().unwrap();
         let working = st.working.as_mut().ok_or("工程尚未成功加载")?;
-        let spb = 60.0 / working.tempo;
-        let map = working.bar_map();
-        let t = working.tracks.get_mut(ti).ok_or("没有这条音轨")?;
-        if t.instrument.trim() != muser_core::audio::INSTRUMENT || !t.parts.is_empty() {
-            return Err("只能剪开、挪动音频轨上的片段".into());
+        let what = match (num("split"), num("start")) {
+            (Some(at), _) => crate::clipedit::split(working, ti, ci, at),
+            (None, Some(to)) => crate::clipedit::move_to(working, ti, ci, to),
+            _ => return Err("要 split 或 start".into()),
         }
-        let c = t.clips.get(ci).cloned().ok_or("没有这个片段")?;
-        let audio = c.audio.clone().ok_or("这个片段不是音频")?;
-        let bar = |b: f64| { let (k, into) = map.bar_at(b); format!("第 {} 小节第 {:.2} 拍", k + 1, into + 1.0) };
-        let what = if let Some(at) = num("split") {
-            let (a, z) = (c.start.0, c.start.0 + c.length.0);
-            if !(at > a + 0.01 && at < z - 0.01) {
-                return Err("剪刀要落在片段中间".into());
-            }
-            let mut left = c.clone();
-            let mut right = c.clone();
-            left.length = muser_core::Beats(at - a);
-            right.start = muser_core::Beats(at);
-            right.length = muser_core::Beats(z - at);
-            let (mut la, mut ra) = (audio.clone(), audio.clone());
-            la.fade_out = 0.01;
-            ra.fade_in = 0.01;
-            ra.offset = audio.offset + (at - a) * spb;
-            left.audio = Some(la);
-            right.audio = Some(ra);
-            t.clips[ci] = left;
-            t.clips.insert(ci + 1, right);
-            format!("✂ {}：在{}剪开", t.name, bar(at))
-        } else if let Some(to) = num("start") {
-            let to = to.max(0.0);
-            t.clips[ci].start = muser_core::Beats(to);
-            t.clips.sort_by(|x, y| x.start.0.total_cmp(&y.start.0));
-            format!("↔ {}：片段从{}挪到{}（{:+.0} 毫秒）", t.name, bar(c.start.0), bar(to), (to - c.start.0) * spb * 1000.0)
-        } else {
-            return Err("要 split 或 start".into());
-        };
-        let name = t.name.clone();
+        .map_err(|e| format!("{e:#}"))?;
+        let name = working.tracks[ti].name.clone();
         st.clip_dirty.insert(name);
         st.clip_edits.push(what);
         self.request_render(&mut st);

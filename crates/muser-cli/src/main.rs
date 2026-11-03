@@ -14,6 +14,7 @@
 mod loop_edit;
 mod play;
 mod poly;
+mod clipedit;
 mod self_update;
 mod takes;
 mod view;
@@ -39,7 +40,7 @@ enum Command {
     Render {
         /// 工程文件路径（.json）。
         project: String,
-        /// 输出 WAV 路径。
+        /// 输出路径：.wav（16 位）或 .mp3（320 kbit/s）。
         #[arg(short, long, default_value = "out.wav")]
         output: String,
         /// 采样率。
@@ -295,6 +296,11 @@ enum Command {
         #[arg(long)]
         fps: Option<u32>,
     },
+    /// 剪开、挪动音频轨上的片段（改工程文件）：split 在某一拍剪开，move 把第几个片段挪到某一拍或挪若干毫秒。
+    Clip {
+        #[command(subcommand)]
+        command: ClipCommand,
+    },
     /// 录人声的每一遍（muser view 里录的，在 recordings/）：长度、响度、实际唱的部分、工程用了没有；--clean 删掉没用到的。
     Takes {
         /// 工程文件路径（.json）。
@@ -323,6 +329,33 @@ enum Command {
         /// 装指定版本（如 v0.4.0），而不是最新。
         #[arg(long)]
         version: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum ClipCommand {
+    /// 在第 `at` 拍把那里的音频片段剪成两段。
+    Split {
+        project: String,
+        /// 音轨名。
+        #[arg(long)]
+        track: String,
+        /// 第几拍剪开（工程的拍，从 0 起）。
+        #[arg(long)]
+        at: f64,
+    },
+    /// 挪动一个音频片段：--to 挪到第几拍开始，或 --by-ms 挪若干毫秒（负数往前）。
+    Move {
+        project: String,
+        #[arg(long)]
+        track: String,
+        /// 片段序号（这条轨 clips 的顺序，从 0 起）。
+        #[arg(long)]
+        clip: usize,
+        #[arg(long)]
+        to: Option<f64>,
+        #[arg(long, allow_hyphen_values = true)]
+        by_ms: Option<f64>,
     },
 }
 
@@ -570,6 +603,10 @@ fn run() -> Result<()> {
         Command::SelfUpdate { check, version } => self_update::run(check, version),
         Command::Migrate { projects, from, write } => cmd_migrate(&projects, &from, write),
         Command::Takes { project, clean } => takes::run(&project, clean),
+        Command::Clip { command } => match command {
+            ClipCommand::Split { project, track, at } => clipedit::run(&project, &track, Some(at), None, None, None),
+            ClipCommand::Move { project, track, clip, to, by_ms } => clipedit::run(&project, &track, None, Some(clip), to, by_ms),
+        },
         Command::ExportDaw { project, output, sample_rate, tail } => {
             let p = load_project(&project)?;
             let settings = RenderSettings { sample_rate, tail_seconds: tail, ..RenderSettings::default() };

@@ -1354,7 +1354,7 @@ fn invalid(m: String) -> EngineError {
     EngineError::Core(muser_core::CoreError::Invalid(m))
 }
 
-/// 渲染工程并写出 WAV 文件。返回 (时长秒, 峰值 dBFS)。
+/// 渲染工程并写出 WAV 文件（`path` 以 `.mp3` 结尾时写 MP3）。返回 (时长秒, 峰值 dBFS)。
 pub fn render_to_wav(
     project: &Project,
     path: &str,
@@ -1371,9 +1371,16 @@ pub fn render_to_wav_with_progress(
     progress: &mut dyn FnMut(usize, usize),
 ) -> Result<(f64, f64), EngineError> {
     let audio = render_inner(project, settings, &mut RenderCache::new(), None, Some(progress))?;
-    let file = std::fs::File::create(path).map_err(|e| EngineError::Wav(format!("写不了 {path}: {e}")))?;
-    wav::write_with_metadata(std::io::BufWriter::new(file), &audio, settings.sample_rate, WavFormat::Int16, &wav_metadata(project, settings.sample_rate))
-        .map_err(|e| EngineError::Wav(format!("{e:?}")))?;
+    let meta = wav_metadata(project, settings.sample_rate);
+    if path.to_lowercase().ends_with(".mp3") {
+        // 输出文件名是 .mp3 时直接编码 MP3（320 kbit/s 恒定码率，带标题、速度标签）。
+        let opts = manguebyte::formats::mp3::Mp3Options::constant(320).with_metadata(&meta);
+        manguebyte::formats::mp3::write_file(path, &audio, settings.sample_rate, &opts).map_err(|e| EngineError::Wav(format!("写 MP3 失败: {e:?}")))?;
+    } else {
+        let file = std::fs::File::create(path).map_err(|e| EngineError::Wav(format!("写不了 {path}: {e}")))?;
+        wav::write_with_metadata(std::io::BufWriter::new(file), &audio, settings.sample_rate, WavFormat::Int16, &meta)
+            .map_err(|e| EngineError::Wav(format!("{e:?}")))?;
+    }
     let seconds = audio.num_frames() as f64 / f64::from(settings.sample_rate);
     let peak_db = decibels::gain_to_db(f64::from(audio.peak()));
     Ok((seconds, peak_db))

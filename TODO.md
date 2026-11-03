@@ -29,8 +29,8 @@
 - `muser takes <工程> --timing`：逐句量录音和引导旋律（带 `lyric` 的轨）的时间差（音高曲线比对），给出"哪一句晚了多少毫秒"。
   这次是 agent 现写脚本量的，应该做成命令。
 - 默认延迟补偿：多收集几台机器的实测（这次约 70 毫秒）再定默认值；或者在录音面板里加一个"拍手测延迟"的按钮。
-- `muser render -o x.mp3`：直接导出 MP3（现在要 ffmpeg）。
-- `muser clip split / move`：给 agent 的命令行剪开、挪片段（现在 agent 改 JSON）。
+- ✅ `muser render -o x.mp3`：直接导出 MP3。
+- ✅ `muser clip split / move`：给 agent 的命令行剪开、挪片段。
 
 ## 0.4 · 大
 
