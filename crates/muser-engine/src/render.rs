@@ -1312,9 +1312,71 @@ pub fn render_to_wav_with_progress(
     Ok((seconds, peak_db))
 }
 
+/// 一条分轨：音轨名、写到的文件、峰值 dBFS。
+pub struct Stem {
+    pub track: String,
+    pub path: std::path::PathBuf,
+    pub peak_db: f64,
+}
+
+/// 分轨导出：每条没静音的音轨各渲染一个 WAV 到 `dir`（`01-名字.wav`…），带它自己的效果器、推子、声像，
+/// 以及它发送到总线的部分（混响、延迟随这条轨走）；侧链照常生效。**不带主总线效果器**（母带处理留给 DAW），
+/// 主输出音量与其自动化照旧。各轨长度相同（与整首一样长），在 DAW 里从 0 对齐即可。乐器只渲染一遍（缓存复用）。
+pub fn render_stems(
+    project: &Project,
+    dir: &std::path::Path,
+    settings: RenderSettings,
+    progress: &mut dyn FnMut(&str, usize, usize),
+) -> Result<Vec<Stem>, EngineError> {
+    std::fs::create_dir_all(dir).map_err(|e| EngineError::Wav(format!("建不了目录 {}: {e}", dir.display())))?;
+    let mut base = project.clone();
+    base.master_effects.clear();
+    let mut cache = RenderCache::new();
+    let mut out = Vec::new();
+    let live: Vec<usize> = (0..project.tracks.len()).filter(|&i| !project.tracks[i].muted).collect();
+    for (n, &i) in live.iter().enumerate() {
+        let mut q = base.clone();
+        for (j, t) in q.tracks.iter_mut().enumerate() {
+            t.muted = j != i;
+        }
+        let name = project.tracks[i].name.clone();
+        let audio = render_inner(&q, settings, &mut cache, None, Some(&mut |done, total| progress(&name, n * total + done, live.len() * total)))?;
+        let safe: String = name.chars().map(|c| if c.is_alphanumeric() || "-_.".contains(c) { c } else { '_' }).collect();
+        let path = dir.join(format!("{:02}-{safe}.wav", n + 1));
+        wav::write_file(&path, &audio, settings.sample_rate, WavFormat::Int16).map_err(|e| EngineError::Wav(format!("{e:?}")))?;
+        out.push(Stem { track: name, path, peak_db: decibels::gain_to_db(f64::from(audio.peak())) });
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stems_sum_back_to_the_mix_without_master_effects() {
+        let mut p = project();
+        p.master_effects.clear();
+        let dir = std::env::temp_dir().join(format!("muser-stems-{}", std::process::id()));
+        let stems = render_stems(&p, &dir, RenderSettings::default(), &mut |_, _, _| {}).unwrap();
+        assert_eq!(stems.len(), p.tracks.iter().filter(|t| !t.muted).count());
+        let mix = render(&p, RenderSettings::default()).unwrap();
+        let mut sum = vec![0.0f32; mix.num_frames() * 2];
+        for s in &stems {
+            let a = wav::read_file(&s.path).unwrap().buffer;
+            assert_eq!(a.num_frames(), mix.num_frames(), "{}", s.track);
+            for ch in 0..2 {
+                for (k, x) in a.channel(ch).iter().enumerate() {
+                    sum[ch * mix.num_frames() + k] += *x;
+                }
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+        // 16 位量化与非线性的总线效果器（limiter、侧链压缩）会差一点，整体应吻合。
+        let err: f64 = (0..2).flat_map(|ch| mix.channel(ch).iter().enumerate().map(move |(k, x)| (ch, k, *x)))
+            .map(|(ch, k, x)| f64::from((sum[ch * mix.num_frames() + k] - x).abs())).fold(0.0, f64::max);
+        assert!(err < 0.25, "分轨相加与整首差太多：{err}");
+    }
 
     /// 约 1 秒的小工程，覆盖：总线、发送与发送自动化、侧链（音轨与主总线）、有延迟的 limiter（总线与主总线）、
     /// 乐器/增益/声像/效果器自动化、静音音轨。

@@ -188,6 +188,17 @@ struct ExportMidiParams {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct ExportStemsParams {
+    project_id: String,
+    /// 输出目录（不存在会建）。
+    output_dir: String,
+    /// 采样率，默认 48000。
+    sample_rate: Option<u32>,
+    /// 结尾余响秒数，默认 2。
+    tail: Option<f64>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct RenderParams {
     project_id: String,
     /// 输出 WAV 文件路径。
@@ -722,6 +733,28 @@ dialect=yue2：YuE2 原生写法（Vocal / Ins 两个单音声部、和弦记号
         }
         let skipped = if m.skipped.is_empty() { String::new() } else { format!("；没有导出的 audio 音轨: {}", m.skipped.join(", ")) };
         Ok(ok_text(format!("已导出 → {}: {} 字节{skipped}", p.output_path, m.bytes.len())))
+    }
+
+    #[tool(description = "分轨导出：每条没静音的音轨各渲染一个 WAV 到 output_dir（01-名字.wav…），带它的效果器、推子、声像与发送到总线的部分（混响随轨走），\
+侧链照常；不带主总线效果器（母带留给 DAW）。各轨与整首同长，从 0 对齐。给要在 DAW 里继续混音的人。")]
+    fn export_stems(&self, Parameters(p): Parameters<ExportStemsParams>) -> Result<CallToolResult, McpError> {
+        let Some(proj) = self.sessions.lock().unwrap().get(&p.project_id).cloned() else {
+            return Ok(user_err(format!("找不到工程 '{}'", p.project_id)));
+        };
+        let settings = RenderSettings {
+            sample_rate: p.sample_rate.unwrap_or(48_000),
+            tail_seconds: p.tail.unwrap_or(2.0),
+            ..RenderSettings::default()
+        };
+        match muser_engine::render::render_stems(&proj, std::path::Path::new(&p.output_dir), settings, &mut |_, _, _| {}) {
+            Ok(list) => Ok(ok_text(format!(
+                "已分轨导出 {} 条 → {}{}",
+                list.len(),
+                p.output_dir,
+                list.iter().map(|s| format!("\n{}  {}  峰值 {:.1} dBFS", s.path.display(), s.track, s.peak_db)).collect::<String>()
+            ))),
+            Err(e) => Ok(user_err(format!("分轨导出失败: {e}"))),
+        }
     }
 
     #[tool(description = "把工程离线渲染为 WAV 文件，返回时长与峰值。")]

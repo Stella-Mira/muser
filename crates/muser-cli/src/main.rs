@@ -50,6 +50,9 @@ enum Command {
         /// 临时换工程的随机种子（不改文件）：humanize 与 random 自动化换一遍。
         #[arg(long)]
         seed: Option<u64>,
+        /// 分轨导出到这个目录（每条没静音的音轨一个 WAV，带它的效果器与发送到总线的部分，不带主总线效果器），代替整首混音。
+        #[arg(long, value_name = "DIR")]
+        stems: Option<String>,
     },
     /// 导出标准 MIDI 文件（每条乐器音轨一条 MIDI 轨；音符含 humanize、连奏、鼓手展开，踏板为 CC64）。
     Midi {
@@ -522,7 +525,8 @@ fn run() -> Result<()> {
             sample_rate,
             tail,
             seed,
-        } => cmd_render(&project, &output, sample_rate, tail, seed),
+            stems,
+        } => cmd_render(&project, &output, sample_rate, tail, seed, stems.as_deref()),
         Command::Validate { project } => cmd_validate(&project),
         Command::Instruments { name, family, json } => {
             cmd_instruments(name.as_deref(), family.as_deref(), json)
@@ -697,7 +701,7 @@ fn load_project(path: &str) -> Result<Project> {
     Ok(project.at_file(path))
 }
 
-fn cmd_render(project_path: &str, output: &str, sample_rate: u32, tail: f64, seed: Option<u64>) -> Result<()> {
+fn cmd_render(project_path: &str, output: &str, sample_rate: u32, tail: f64, seed: Option<u64>, stems: Option<&str>) -> Result<()> {
     let mut project = load_project(project_path)?;
     if let Some(s) = seed {
         project.seed = s;
@@ -717,6 +721,25 @@ fn cmd_render(project_path: &str, output: &str, sample_rate: u32, tail: f64, see
             eprint!("\r渲染中 {:3.0}%（{:.1}s / {:.1}s，用时 {:.1}s）", done as f64 * 100.0 / total.max(1) as f64, done as f64 / sr, total as f64 / sr, t0.elapsed().as_secs_f64());
         }
     };
+    if let Some(dir) = stems {
+        let mut stem_progress = |name: &str, done: usize, total: usize| {
+            if tty && (last.elapsed().as_millis() >= 200 || done == total) {
+                last = std::time::Instant::now();
+                eprint!("\r分轨 {:3.0}%（{name}，用时 {:.1}s）{:20}", done as f64 * 100.0 / total.max(1) as f64, t0.elapsed().as_secs_f64(), "");
+            }
+        };
+        let result = muser_engine::render::render_stems(&project, std::path::Path::new(dir), settings, &mut stem_progress);
+        if tty {
+            eprint!("\r{:80}\r", "");
+        }
+        let list = result.with_context(|| format!("分轨导出失败: {project_path}"))?;
+        println!("已分轨导出 '{}' → {dir}/（{} 条，不含主总线效果器，各轨同长、从 0 对齐）：", project.name, list.len());
+        for s in &list {
+            println!("  {}  {}  峰值 {:.1} dBFS{}", s.path.display(), s.track, s.peak_db, if s.peak_db > 0.0 { "  ⚠ 削波" } else { "" });
+        }
+        print_warnings(&project);
+        return Ok(());
+    }
     let result = render_to_wav_with_progress(&project, output, settings, &mut progress);
     if tty {
         // 用空格覆盖进度行（老式 Windows 控制台不认 ANSI 清行）。
