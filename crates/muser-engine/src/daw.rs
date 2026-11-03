@@ -3,7 +3,7 @@
 //! - `<名字>.mid`：所有乐器音轨的音符（与渲染一致），速度、拍号、段落标记；在 DAW 里可以换成自己的音源；
 //! - `stems/NN-轨名.wav`：每条轨的声音（24 位，带效果器与发送，不带主总线效果器），各轨同长、从第 1 小节对齐；
 //! - `mix.wav`：整首混音（对照用）；
-//! - `IMPORT.md`：各 DAW 的导入步骤，以及速度、拍号、采样率。
+//! - `IMPORT.md`：只是说明——各 DAW（Live、Cubase、Logic、FL Studio、Studio One、Bitwig、REAPER、GarageBand、Pro Tools）的导入步骤，以及速度、拍号、采样率。
 
 use std::path::{Path, PathBuf};
 
@@ -68,9 +68,30 @@ fn guide_text(p: &Project, base: &str, sr: u32, stems: &[Stem], skipped: &[Strin
          1. File → Import → MIDI File…，选 `{base}.mid`，提示时选择导入速度。\n\
          2. 把 `stems/` 里的文件一起拖到第 1 小节，选 **Create new tracks**。\n\
          3. 如果 Logic 想按音频改速度（Smart Tempo），把 Project Tempo 模式设成 **Keep**。\n\n\
+         ## FL Studio\n\n\
+         1. 先把工程速度设成 {tempo}。\n\
+         2. File → Import → MIDI file…，选 `{base}.mid`，每条 MIDI 轨会变成一个通道（channel）。\n\
+         3. 把 `stems/` 里的 WAV 从浏览器拖进 Playlist，每个放一条轨、都放在第 1 小节开头；如果 FL 提示按速度拉伸音频，选不拉伸（保持原样）。\n\n\
+         ## Studio One\n\n\
+         1. 把 `{base}.mid` 拖进编曲窗口，提示时选择导入速度。\n\
+         2. 把 `stems/` 里的文件一起拖到第 1 小节（每个文件一条轨）。Studio One 7 起也能打开 DAWproject。\n\n\
+         ## Bitwig Studio\n\n\
+         1. 把速度设成 {tempo}，再把 `{base}.mid` 拖进编曲视图（每条 MIDI 轨一条轨）。\n\
+         2. 把 stems 拖到第 1 小节；在片段的 Stretch 设置里选 Off（不随速度拉伸）。\n\n\
+         ## REAPER\n\n\
+         1. Insert → Media file…，选 `{base}.mid`，勾上导入速度表（tempo map）和拆成多条轨。\n\
+         2. 光标放在开头，Insert → Media file… 多选 stems，选“每个文件一条轨”。\n\n\
+         ## GarageBand\n\n\
+         1. 新建空工程，把 `{base}.mid` 拖进轨道区（第一个拖进来的 MIDI 文件会带上速度）。\n\
+         2. 把 stems 拖到第 1 小节；在音频区域上关掉 **Follow Tempo & Pitch**。\n\n\
+         ## Pro Tools\n\n\
+         1. File → Import → MIDI…，选择导入速度表（tempo map），放到新轨。\n\
+         2. File → Import → Audio…，选中 stems 导入到新轨，放在 session 开头。\n\n\
          ## 其它 DAW / Other DAWs\n\n\
-         设好速度和采样率，导入 MIDI 文件，再把 stems 全部放在第 1 小节开头。\n\
-         Set tempo and sample rate, import the MIDI file, and place all stems at the very start of bar 1.\n",
+         设好速度和采样率，导入 MIDI 文件，再把 stems 全部放在第 1 小节开头，关掉音频的自动拉伸。\n\
+         Set tempo and sample rate, import the MIDI file, place all stems at the very start of bar 1, and turn off audio time-stretching.\n\n\
+         菜单名称随版本略有不同；找不到时搜 DAW 的“import MIDI file”和“import audio to new tracks”。\n\
+         Menu names vary between versions; search your DAW's help for \"import MIDI file\" and \"import audio to new tracks\".\n",
         ver = env!("CARGO_PKG_VERSION"),
     )
 }
