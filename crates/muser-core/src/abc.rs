@@ -15,7 +15,58 @@ use crate::{Beats, Note};
 
 /// 解析出的音符（拍，相对 clip 起点）。
 pub fn parse(text: &str) -> Result<Vec<Note>, String> {
-    Ok(Parser::new(text)?.run()?.0)
+    let p = Parser::new(text)?;
+    let mut notes = p.run()?.0;
+    if !p.lyrics.is_empty() {
+        assign_lyrics(&mut notes, &p.lyrics);
+    }
+    Ok(notes)
+}
+
+/// `w:` 歌词行里的音节，按 ABC 2.1：空格或 `-` 分开（`hel-lo` 是两个音节），`*` 跳过一个音，
+/// `_` 把上一个音节延长到这个音（这个音不唱新音节），`|` 只是对齐用，`~` 把两个词放在同一个音上。
+fn lyric_tokens(lines: &[String]) -> Vec<Option<String>> {
+    let mut out = Vec::new();
+    for line in lines {
+        let mut cur = String::new();
+        let flush = |cur: &mut String, out: &mut Vec<Option<String>>| {
+            if !cur.is_empty() {
+                out.push(Some(std::mem::take(cur).replace('~', " ")));
+            }
+        };
+        for c in line.chars() {
+            match c {
+                ' ' | '\t' | '|' => flush(&mut cur, &mut out),
+                '-' => flush(&mut cur, &mut out),
+                '*' | '_' => {
+                    flush(&mut cur, &mut out);
+                    out.push(None);
+                }
+                _ => cur.push(c),
+            }
+        }
+        flush(&mut cur, &mut out);
+    }
+    out
+}
+
+/// 音节按顺序放到音上；同一起点的和弦音唱同一个音节。
+fn assign_lyrics(notes: &mut [Note], lines: &[String]) {
+    let tokens = lyric_tokens(lines);
+    let mut order: Vec<usize> = (0..notes.len()).collect();
+    order.sort_by(|&a, &b| notes[a].start.0.total_cmp(&notes[b].start.0));
+    let mut k = 0;
+    let mut i = 0;
+    while i < order.len() && k < tokens.len() {
+        let t = notes[order[i]].start.0;
+        let mut j = i;
+        while j < order.len() && (notes[order[j]].start.0 - t).abs() < 1e-9 {
+            notes[order[j]].lyric = tokens[k].clone();
+            j += 1;
+        }
+        i = j;
+        k += 1;
+    }
 }
 
 /// 小节时值和拍号对不上的地方（`meter` 是工程一小节的拍数，ABC 写了 `M:` 时用它）。只看用 `|` 分开的小节：
@@ -119,6 +170,8 @@ fn fraction(s: &str) -> Option<f64> {
 
 struct Parser<'a> {
     body: Vec<(usize, &'a str)>,
+    /// `w:` 歌词行。
+    lyrics: Vec<String>,
     /// 单位时值（拍）。
     unit: f64,
     /// 一小节多少拍。
@@ -142,6 +195,7 @@ impl<'a> Parser<'a> {
     fn new(text: &'a str) -> Result<Self, String> {
         let (mut unit, mut bar, mut key, mut meter_given) = (0.5, 4.0, [0; 7], false);
         let mut body = Vec::new();
+        let mut lyrics = Vec::new();
         for (ln, raw) in text.lines().enumerate() {
             let line = raw.split('%').next().unwrap_or("").trim_end();
             let header = line.len() >= 2 && line.as_bytes()[1] == b':' && line.as_bytes()[0].is_ascii_alphabetic() && !line.starts_with('|');
@@ -158,6 +212,7 @@ impl<'a> Parser<'a> {
                         key = key_signature(value).map_err(|e| format!("第 {} 行 {e}", ln + 1))?;
                     }
                     'V' => return Err(format!("第 {} 行：不支持多声部 V:，每个声部写进各自音轨的 clip", ln + 1)),
+                    'w' => lyrics.push(value.to_string()),
                     _ => {}
                 }
                 continue;
@@ -166,7 +221,7 @@ impl<'a> Parser<'a> {
                 body.push((ln + 1, line));
             }
         }
-        Ok(Parser { body, unit, bar, meter_given, key })
+        Ok(Parser { body, lyrics, unit, bar, meter_given, key })
     }
 
     /// 音符，小节线的位置（行号, 拍），有没有反复 / 一二房。
@@ -242,7 +297,7 @@ impl<'a> Parser<'a> {
                             continue;
                         }
                         let length = if staccato { l * 0.5 } else { l };
-                        notes.push(Note { pitch, start: Beats(t), length: Beats(length), velocity, accent, bend: Vec::new() });
+                        notes.push(Note { pitch, start: Beats(t), length: Beats(length), velocity, accent, bend: Vec::new(), lyric: None });
                         if tie {
                             next_tied.push(notes.len() - 1);
                         }
@@ -585,6 +640,14 @@ fn repeat_order(tokens: &[(usize, Tok)]) -> Vec<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lyric_lines_follow_the_notes() {
+        let n = parse("L:1/4\nK:C\nC D [EG] F | G2 A B |\nw: la shi-ni * hao_ | sing").unwrap();
+        let l: Vec<Option<&str>> = n.iter().map(|x| x.lyric.as_deref()).collect();
+        // C la, D shi, [E G] ni（和弦两个音同一个音节）, F 跳过, G hao, A 延长（不唱新的）, B sing。
+        assert_eq!(l, vec![Some("la"), Some("shi"), Some("ni"), Some("ni"), None, Some("hao"), None, Some("sing")]);
+    }
 
     #[test]
     fn bar_lengths_against_the_meter() {

@@ -94,6 +94,11 @@ pub fn export(project: &Project) -> Result<MidiExport, EngineError> {
         for (tick, act) in schedule_ticks(project, ti, TICKS_PER_QUARTER) {
             let tick = tick as u64;
             let message = match act {
+                // 歌词放在元音落下的位置（音符起点）；schedule_ticks 的"帧"就是 tick。
+                Act::Sing { text, lead, .. } => {
+                    track.push_meta(tick + u64::from(lead), MetaEvent::Lyric(text.as_str().to_string()));
+                    continue;
+                }
                 Act::On { key, velocity, .. } => {
                     MidiMessage::NoteOn { channel, note: key, velocity: (velocity * 127.0).round().clamp(1.0, 127.0) as u8 }
                 }

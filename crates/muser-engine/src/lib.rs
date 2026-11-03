@@ -17,6 +17,7 @@ pub mod hum;
 pub mod instrument;
 pub mod levels;
 pub mod loop_library;
+pub mod lyric;
 pub mod midi;
 pub mod migrate;
 pub mod mix;
@@ -183,6 +184,18 @@ pub fn warnings(project: &muser_core::Project) -> Vec<String> {
                     "tracks[{ti}] '{}': {} 个音远在 {} 的推荐音域 {}–{} 之外（超出一个五度以上），在 {}–{}：能发声，但可能很轻或不自然",
                     t.name, outside.len(), info.name, note_name(lo), note_name(hi), note_name(min), note_name(max)
                 ));
+            }
+        }
+    }
+    // 歌词只有 choir.* 会唱。
+    if let Ok(arranged) = arrange::arranged(project) {
+        for (ti, t) in arranged.tracks.iter().enumerate() {
+            if t.instrument.trim().to_lowercase().starts_with("choir.") {
+                continue;
+            }
+            let sung = (0..t.clips.len()).any(|ci| clip_notes(&arranged, ti, ci).unwrap_or_default().iter().any(|n| n.lyric.is_some()));
+            if sung {
+                out.push(format!("tracks[{ti}] '{}': 写了歌词（lyric / ABC 的 w: 行），但只有 choir.*（如 choir.solo）会唱，{} 会忽略这些歌词", t.name, t.instrument));
             }
         }
     }

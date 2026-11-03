@@ -1,0 +1,26 @@
+{
+  "name": "sing-syllables",
+  "tempo": 84,
+  "seed": 7,
+  "buses": [{ "name": "hall", "effects": [{ "type": "eq", "shape": "highpass", "frequency": 200 }, { "type": "reverb", "mix": 1.0, "decay_seconds": 2.6 }] }],
+  "master_effects": [{ "type": "limiter", "ceiling_db": -1 }],
+  "tracks": [
+    { "name": "voice", "instrument": "choir.solo", "gain_db": 0, "sends": { "hall": -9 },
+      "instrument_params": { "vibrato_depth": 25, "breathiness": 0.2 },
+      "humanize": { "timing_ms": 10, "velocity": 0.05 },
+      "clips": [
+        { "start": 0, "length": 16, "abc": "L:1/8\nK:G\nB2 B2 A2 G2 | A4 E4 | G2 A2 B2 d2 | B8 |\nw: yue liang sheng qi | lai le | feng chui guo shan | gang" },
+        { "start": 16, "length": 16, "abc": "L:1/8\nK:G\nd2 d2 B2 G2 | A4 B4 | c2 B2 A2 F2 | G8 |\nw: sing a lit-tle | song for | me to-night and | stay" },
+        { "start": 32, "length": 16, "legato": true, "abc": "L:1/8\nK:G\nB4 A4 | G4 E4 | D4 E4 | G8 |\nw: ma ni ma | hao la | wo | xiang" }
+      ] },
+    { "name": "pad", "instrument": "poly.warm_analog_pad", "gain_db": -14, "sends": { "hall": -8 },
+      "clips": [{ "start": 0, "length": 48, "notes": [
+        { "pitch": 43, "start": 0, "length": 8 }, { "pitch": 50, "start": 0, "length": 8 }, { "pitch": 59, "start": 0, "length": 8 },
+        { "pitch": 40, "start": 8, "length": 8 }, { "pitch": 47, "start": 8, "length": 8 }, { "pitch": 55, "start": 8, "length": 8 },
+        { "pitch": 43, "start": 16, "length": 8 }, { "pitch": 50, "start": 16, "length": 8 }, { "pitch": 59, "start": 16, "length": 8 },
+        { "pitch": 38, "start": 24, "length": 8 }, { "pitch": 45, "start": 24, "length": 8 }, { "pitch": 54, "start": 24, "length": 8 },
+        { "pitch": 36, "start": 32, "length": 8 }, { "pitch": 43, "start": 32, "length": 8 }, { "pitch": 52, "start": 32, "length": 8 },
+        { "pitch": 43, "start": 40, "length": 8 }, { "pitch": 50, "start": 40, "length": 8 }, { "pitch": 55, "start": 40, "length": 8 }
+      ] }] }
+  ]
+}

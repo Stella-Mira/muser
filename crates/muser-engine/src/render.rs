@@ -69,6 +69,8 @@ pub enum EngineError {
 pub(crate) enum Act {
     /// `ch`：带弯音的音符各占一个通道（弯音轮是整个通道的），其余为 None（乐器的通道）。
     On { key: u8, velocity: f32, accent: bool, ch: Option<u8> },
+    /// 唱一个音节（`choir.*` 的音符写了 `lyric`）：在辅音开始的帧发，`lead` 帧后元音落在拍上，音符长 `len` 帧。
+    Sing { syl: crate::lyric::Syl, text: crate::lyric::Text, lead: u32, len: u32, velocity: f32 },
     Off { key: u8, ch: Option<u8> },
     Pedal { down: bool },
     /// 弯音轮，-8192 – 8191（±2 半音）。
@@ -111,6 +113,7 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
     let (sr, tempo) = (cx.sr, cx.tempo);
     let mut acts: Vec<(usize, Act)> = Vec::new();
     let mut bent = 0usize;
+    let sings = track.instrument.trim().to_lowercase().starts_with("choir.");
     for (ci, clip) in track.clips.iter().enumerate() {
         // notes 加上 abc、grid、drummer 展开的音符（工程校验时已检查过写法）。
         let all = crate::clip_notes(project, ti, ci).unwrap_or_default();
@@ -181,7 +184,22 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
                     }
                 }
             }
-            acts.push((on, Act::On { key: note.pitch, velocity, accent: note.accent, ch }));
+            let mut on_at = on;
+            if let Some(text) = note.lyric.as_deref().filter(|_| sings) {
+                let mut syl = crate::lyric::parse(text);
+                // 连奏里紧接着上一个音的音节不发辅音，元音直接滑过去。
+                let tied = clip.legato
+                    && notes.iter().any(|m| m.start.0 < note.start.0 - 1e-9 && note.start.0 - (m.start.0 + m.length.0) <= 0.25 + 1e-9);
+                if tied {
+                    syl.onset = crate::lyric::Onset::None;
+                }
+                let lead = ((syl.lead() * sr) as usize).min(on);
+                if syl.voiced_onset() {
+                    on_at = on - lead;
+                }
+                acts.push((on - lead, Act::Sing { syl, text: crate::lyric::Text::new(text), lead: lead as u32, len: (off - on) as u32, velocity }));
+            }
+            acts.push((on_at, Act::On { key: note.pitch, velocity, accent: note.accent, ch }));
             acts.push((off, Act::Off { key: note.pitch, ch }));
         }
         for &(a, b) in &clip.pedal {
@@ -200,7 +218,8 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
             Act::Pedal { down: false } => 1,
             Act::Pedal { down: true } => 2,
             Act::Bend { .. } => 3,
-            Act::On { .. } => 4,
+            Act::Sing { .. } => 4,
+            Act::On { .. } => 5,
         };
         (frame, order)
     });
@@ -237,6 +256,7 @@ fn chase(acts: Vec<(usize, Act)>, start: usize) -> Vec<(usize, Act)> {
                 wheels.retain(|w| !matches!(w, Act::Bend { ch: c, .. } if *c == ch));
                 wheels.push(act);
             }
+            Act::Sing { .. } => {}
         }
     }
     let mut rest: Vec<(usize, Act)> = acts[split..].to_vec();
@@ -278,6 +298,9 @@ struct LiveInstrument {
     taps: Vec<SharedTape>,
     name: String,
     instrument: String,
+    /// 唱音节：叠在人声上的辅音，与排好的元音变化（帧, 元音 0–4）。
+    consonants: Option<crate::lyric::Consonants>,
+    vowels: Vec<(usize, f32)>,
 }
 
 /// 一段带子，演奏的音轨写、总线读（插件的直接输出）。
@@ -298,6 +321,7 @@ impl LiveInstrument {
         inst.prepare(&cx.spec);
         let lanes = automate::compile_track(project, ti, beats).map_err(invalid)?.instrument;
         let acts = chase(schedule(project, ti, cx), start);
+        let sings = acts.iter().any(|a| matches!(a.1, Act::Sing { .. }));
         Ok(Self {
             channel: inst.channel(),
             bends: acts.iter().any(|a| matches!(a.1, Act::Bend { .. })),
@@ -311,6 +335,8 @@ impl LiveInstrument {
             taps: Vec::new(),
             name: track.name.clone(),
             instrument: track.instrument.clone(),
+            consonants: sings.then(|| crate::lyric::Consonants::new(cx.sr)),
+            vowels: Vec::new(),
         })
     }
 
@@ -334,8 +360,35 @@ impl LiveInstrument {
                         }
                     }
                     Act::Bend { value, ch } => self.inst.bend(ch, value),
+                    Act::Sing { syl, lead, len, velocity, .. } => {
+                        let (lead, len) = (lead as usize, len as usize);
+                        if let Some(c) = self.consonants.as_mut() {
+                            c.sing(&syl, at, lead, len, velocity);
+                        }
+                        // 元音：鼻音先闭着嘴（u）哼，近音从相近的元音滑进来；其余开口就是第一个元音。
+                        let plan = syl.vowel_plan();
+                        let first = match syl.onset {
+                            crate::lyric::Onset::Nasal => crate::lyric::NASAL_VOWEL,
+                            crate::lyric::Onset::Glide { from } => from,
+                            _ => plan[0].1,
+                        };
+                        self.inst.set_param("vowel", f64::from(first));
+                        let vowel_at = at + lead;
+                        self.vowels.extend(plan.iter().map(|&(t, v)| (vowel_at + (t * len as f64) as usize, v)));
+                        if syl.coda == crate::lyric::Coda::Nasal && len > 0 {
+                            self.vowels.push((vowel_at + len * 4 / 5, crate::lyric::NASAL_VOWEL));
+                        }
+                        self.vowels.sort_by_key(|v| v.0);
+                    }
                 }
                 self.next += 1;
+            }
+            while let Some(&(at, v)) = self.vowels.first() {
+                if at > frame {
+                    break;
+                }
+                self.inst.set_param("vowel", f64::from(v));
+                self.vowels.remove(0);
             }
             for lane in self.lanes.iter_mut() {
                 if let Some(v) = lane.poll(cx.beat_at(frame)) {
@@ -344,9 +397,13 @@ impl LiveInstrument {
             }
             let step = if self.lanes.is_empty() { block_size } else { block_size.min(automate::BLOCK) };
             let next_at = self.acts.get(self.next).map_or(total_frames, |&(at, _)| at.min(total_frames));
+            let next_at = self.vowels.first().map_or(next_at, |v| v.0.min(next_at));
             let end = (frame + step).min(next_at).max(frame + 1).min(total_frames);
             self.block.set_num_frames(end - frame);
             self.inst.process(&mut self.block);
+            if let Some(c) = self.consonants.as_mut() {
+                c.add_to(&mut self.block, frame);
+            }
             // 上游模型在极端参数下可能数值发散；宁可报错也不放出爆音。
             if (0..2).any(|ch| self.block.channel(ch).iter().any(|s| !s.is_finite() || s.abs() > 64.0)) {
                 return Err(EngineError::Unstable(format!(

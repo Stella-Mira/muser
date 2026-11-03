@@ -559,6 +559,10 @@ pub struct Note {
     /// 推弦：`[[0, 0], [0.25, 2]]`；预推再放：`[[0, 2], [0.5, 2], [1, 0]]`。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub bend: Vec<(f64, f64)>,
+    /// 唱的音节（`choir.*` 乐器）：拼音或英文拼法，如 `"la"`、`"shi"`、`"hai"`、`"sing"`。起头的辅音模拟出来，
+    /// 元音映射到 a e i o u。ABC 里用 `w:` 歌词行按顺序对上音符。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lyric: Option<String>,
 }
 
 fn is_zero(v: &u64) -> bool {
@@ -582,6 +586,7 @@ impl Note {
             velocity: default_velocity(),
             accent: false,
             bend: Vec::new(),
+            lyric: None,
         }
     }
 }

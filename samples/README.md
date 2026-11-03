@@ -17,7 +17,7 @@
 | [`ni-acoustic-drums/`](#ni-acoustic-drums) | Native Instruments Acoustic Drums（Kontakt 库）的鼓 loop 放在音频轨上，muser 配贝斯与键盘（需本机装好这个库） |
 | [`sketches/`](#sketches) | 草稿 A/B：ABC 旋律 + grid 贝斯 + 鼓手 + humanize，几行 JSON 一段 |
 | [`tuning/`](#tuning) | 调律：纯律的众赞歌、四分之三音的木卡姆 Rast |
-| [`v0.4/`](#v04) | 0.4 的新功能：段落各有拍号（4/4、7/8、5/4）、跨段落不重置的 polymeter，导出给 DAW |
+| [`v0.4/`](#v04) | 0.4 的新功能：段落各有拍号（4/4、7/8、5/4）、跨段落不重置的 polymeter、唱音节（歌词），导出给 DAW |
 
 wav 不入库，用脚本一次渲染（生成在工程旁边，同名 `.wav`）：
 
@@ -217,6 +217,7 @@ muser play samples/abc/kesh-jig.muser.json
 
 | 工程 | 内容 |
 |---|---|
+| `sing-syllables` | `choir.solo` 唱音节：ABC 的 `w:` 歌词行对上音符。第一句拼音（yue liang sheng qi lai le, feng chui guo shan gang），第二句英文（sing a lit-tle song for me to-night and stay），第三句 `legato`（紧接着的音节不发辅音、元音滑过去）。辅音是模拟的：s / sh 噪声、t / k 爆破、m / n 先哼后开、l / w / y 滑进来 |
 | `odd-clockwork` | 104 BPM，D 多利亚。主歌、副歌 4/4，过门段 `turn` 7/8（`"time_signature": { "numerator": 7, "denominator": 8 }`），间奏 `odd` 5/4：和弦、贝斯、键盘、鼓都按各段的小节长度走。两条 CR-78 时钟——7 步的 claves 和 13 步的 rim——写在 `parts."*"` 里、加了 `"align": "global"`，从第 1 拍一直数下去，穿过三种拍号也不重置，和主节奏不停地错开又对上 |
 
 ```bash
