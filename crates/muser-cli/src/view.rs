@@ -1147,10 +1147,24 @@ impl Shared {
         Ok(())
     }
 
+    /// 删掉一遍。只是贴在工作副本里（还没保存）的，连那个片段一起拿掉；已经保存进工程的不删。
     fn delete_take(&self, file: &str) -> Result<(), String> {
-        let st = self.state.lock().unwrap();
-        let in_use = st.working.as_ref().is_some_and(|w| crate::takes::referenced(w, file)) || st.file.as_ref().is_some_and(|f| crate::takes::referenced(f, file));
-        crate::takes::delete(&self.path, file, in_use).map_err(|e| format!("{e:#}"))
+        let mut st = self.state.lock().unwrap();
+        if st.file.as_ref().is_some_and(|f| crate::takes::referenced(f, file)) {
+            return Err(format!("{file} 已经保存在工程里：先在工程里换成别的一遍或删掉那个片段"));
+        }
+        crate::takes::delete(&self.path, file, false).map_err(|e| format!("{e:#}"))?;
+        st.takes.retain(|t| t.file != file);
+        // 删完变成空的、文件里也没有的新音频轨，一起去掉。
+        let names: Vec<String> = st.file.as_ref().map(|f| f.tracks.iter().map(|t| t.name.clone()).collect()).unwrap_or_default();
+        if let Some(w) = st.working.as_mut() {
+            for t in &mut w.tracks {
+                t.clips.retain(|c| c.audio.as_ref().is_none_or(|a| a.file != file));
+            }
+            w.tracks.retain(|t| !(t.clips.is_empty() && t.instrument.trim() == muser_core::audio::INSTRUMENT && !names.contains(&t.name)));
+        }
+        self.request_render(&mut st);
+        Ok(())
     }
 
     fn reset(&self) {
@@ -1208,8 +1222,11 @@ impl Shared {
         }
         out["changes"] = json!(changes);
         out["takes_pending"] = json!(st.takes);
-        let in_use = |f: &str| st.working.as_ref().is_some_and(|w| crate::takes::referenced(w, f));
-        out["takes"] = json!(crate::takes::list(&self.path).iter().map(|t| json!({ "take": t, "in_use": in_use(&t.file) })).collect::<Vec<_>>());
+        let used = |p: &Option<Project>, f: &str| p.as_ref().is_some_and(|w| crate::takes::referenced(w, f));
+        out["takes"] = json!(crate::takes::list(&self.path)
+            .iter()
+            .map(|t| json!({ "take": t, "in_use": used(&st.working, &t.file), "saved": used(&st.file, &t.file) }))
+            .collect::<Vec<_>>());
         out["lyrics"] = json!(st.file.as_ref().and_then(|f| f.lyrics.clone()));
         out["solo"] = json!(st.solo);
         out["project_path"] = json!(self.path.display().to_string());
