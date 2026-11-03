@@ -269,6 +269,17 @@ enum Command {
         #[arg(short, long)]
         output: Option<String>,
     },
+    /// 给可视化导出数据（JSON）：每轨音符（秒）、段落、自动化曲线；加 --fps 再渲染一遍，附每帧的整体 / 低频音量包络（dB）。
+    ExportData {
+        /// 工程文件路径（.json）。
+        project: String,
+        /// 输出路径；缺省打印到 stdout。
+        #[arg(short, long)]
+        output: Option<String>,
+        /// 每秒多少帧的音量包络（如 30）；不给就不渲染。
+        #[arg(long)]
+        fps: Option<u32>,
+    },
     /// 把为旧版 muser 写的工程换算到当前版本（听起来和在旧版里一样）。默认只列出改动，加 --write 才写回。
     Migrate {
         /// 工程 JSON（可以多个）。
@@ -535,6 +546,19 @@ fn run() -> Result<()> {
         Command::New { output } => cmd_new(output.as_deref()),
         Command::SelfUpdate { check, version } => self_update::run(check, version),
         Command::Migrate { projects, from, write } => cmd_migrate(&projects, &from, write),
+        Command::ExportData { project, output, fps } => {
+            let p = load_project(&project)?;
+            let data = muser_engine::export_data::export(&p, fps, RenderSettings::default()).with_context(|| format!("导出失败: {project}"))?;
+            let text = serde_json::to_string(&data)? + "\n";
+            match output {
+                Some(path) => {
+                    fs::write(&path, text)?;
+                    println!("已导出可视化数据 → {path}");
+                }
+                None => print!("{text}"),
+            }
+            Ok(())
+        }
         Command::Routing { project } => cmd_routing(&project),
         Command::Analyze { project, audio, json } => cmd_analyze(&project, audio, json),
         Command::Abc { project, output, yue2, chords, no_chords, tracks, vocal, ins, sections, key, vocal_octave } => {

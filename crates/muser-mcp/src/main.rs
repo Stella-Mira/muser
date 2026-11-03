@@ -188,6 +188,15 @@ struct ExportMidiParams {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct ExportDataParams {
+    project_id: String,
+    /// 输出 JSON 文件路径。
+    output_path: String,
+    /// 每秒多少帧的音量包络（如 30）；不给就不渲染、不带包络。
+    fps: Option<u32>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct ExportStemsParams {
     project_id: String,
     /// 输出目录（不存在会建）。
@@ -733,6 +742,23 @@ dialect=yue2：YuE2 原生写法（Vocal / Ins 两个单音声部、和弦记号
         }
         let skipped = if m.skipped.is_empty() { String::new() } else { format!("；没有导出的 audio 音轨: {}", m.skipped.join(", ")) };
         Ok(ok_text(format!("已导出 → {}: {} 字节{skipped}", p.output_path, m.bytes.len())))
+    }
+
+    #[tool(description = "给可视化导出数据（JSON 文件）：tracks[].notes 为 [起点秒, MIDI 音高, 力度 0–127, 时长秒]（与渲染一致）、sections（起止秒）、\
+tracks[].automation 与 master.automation（每 1/4 拍取样的 [秒, 值]）；给 fps 时再渲染一遍，envelope.level_db / low_db 为每帧整体与 150 Hz 以下的电平（dB）。\
+用来给音乐配画面、做可视化。")]
+    fn export_data(&self, Parameters(p): Parameters<ExportDataParams>) -> Result<CallToolResult, McpError> {
+        let Some(proj) = self.sessions.lock().unwrap().get(&p.project_id).cloned() else {
+            return Ok(user_err(format!("找不到工程 '{}'", p.project_id)));
+        };
+        let data = match muser_engine::export_data::export(&proj, p.fps, RenderSettings::default()) {
+            Ok(d) => d,
+            Err(e) => return Ok(user_err(format!("导出失败: {e}"))),
+        };
+        if let Err(e) = std::fs::write(&p.output_path, data.to_string()) {
+            return Ok(user_err(format!("写出 '{}' 失败: {e}", p.output_path)));
+        }
+        Ok(ok_text(format!("已导出可视化数据 → {}", p.output_path)))
     }
 
     #[tool(description = "分轨导出：每条没静音的音轨各渲染一个 WAV 到 output_dir（01-名字.wav…），带它的效果器、推子、声像与发送到总线的部分（混响随轨走），\
