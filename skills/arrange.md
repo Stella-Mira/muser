@@ -38,6 +38,8 @@
 - 键：`"verse"`；`"verse#2"`（只第 2 次 verse，覆盖 `"verse"`）；`"*"`（没单独写的段落都用它）。没有匹配的段落，这条轨休息。
 - 内容就是 clip 的写法：`notes` / `abc` / `grid` / `drummer` / `chordal`，加 `humanize`、`legato`、`pedal`、`transform`。
 - `length`（拍）：内容按这个长度循环铺满段落。缺省：普通内容 = 整段（不循环），chordal = 音型长度。
+- `"align": "global"`：循环从工程开头（第 0 拍）算起，跨段落不重置（缺省 `"section"`：每段从头开始）。polymeter 用它：
+  `"*": { "grid": { "hat": "x......" }, "align": "global" }`（7 步）配另一条 13 步的轨，段落怎么改都一直漂移，不用改写成绝对拍的 clips。
 - `end`：每一遍段落的最后 `beats` 拍换成这里的内容（过门、转折、句尾变化），写法同 part。
 - `drummer` 写整段（不写 `length`）时，按段落长度打过门；每一遍段落的种子不同，所以每一遍都不完全一样。
 

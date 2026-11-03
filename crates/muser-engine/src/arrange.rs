@@ -76,7 +76,19 @@ pub fn arranged(project: &Project) -> Result<Cow<'_, Project>, String> {
                 drums: track.instrument.trim().starts_with("drums."),
                 seed: SplitMix64(occ_seed ^ (ti as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)).next_u64(),
             };
-            let mut notes = ctx.render(part, span.length, &chords, &at)?;
+            let mut notes = if part.align == muser_core::arrange::Align::Global && span.start > 0.0 {
+                // 从工程开头铺到这一段结尾，只留这一段里的：循环的相位跨段落接着走。
+                let off = span.start;
+                let global: Vec<Placed> = chords.iter().map(|p| Placed { start: p.start + off, ..p.clone() }).collect();
+                let mut v = ctx.render(part, off + span.length, &global, &at)?;
+                v.retain(|n| n.start.0 >= off - 1e-9);
+                for n in &mut v {
+                    n.start = Beats((n.start.0 - off).max(0.0));
+                }
+                v
+            } else {
+                ctx.render(part, span.length, &chords, &at)?
+            };
             if let Some(end) = &part.end {
                 let b = end.beats.unwrap_or(0.0).min(span.length);
                 let cut = span.length - b;
@@ -407,6 +419,33 @@ pub(crate) fn apply(ts: &[Transform], notes: &mut Vec<Note>, len: &mut f64, k: u
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn global_align_keeps_the_loop_phase_across_sections() {
+        // 3 拍一圈的循环，段落 4 拍：section 对齐每段从头，global 对齐接着走。
+        let mk = |align: &str| {
+            project(serde_json::json!({ "tempo": 120,
+                "sections": { "a": { "bars": 1, "chords": "C" }, "b": { "bars": 1, "chords": "F" } },
+                "form": ["a", "b", "a"],
+                "tracks": [
+                    { "name": "p", "instrument": "drums.909", "parts": { "*": { "notes": [{ "pitch": 36, "start": 0, "length": 0.5 }], "length": 3, "align": align } } },
+                    { "name": "c", "instrument": "poly.juno_keys", "parts": { "*": { "chordal": "1 . 5", "step": 1, "align": align } } }
+                ] }))
+        };
+        let starts = |p: &Project, ti: usize| -> Vec<f64> {
+            let a = arranged(p).unwrap();
+            let mut v: Vec<f64> = a.tracks[ti].clips.iter().flat_map(|c| c.notes.iter().map(move |n| c.start.0 + n.start.0)).collect();
+            v.sort_by(f64::total_cmp);
+            v
+        };
+        assert_eq!(starts(&mk("section"), 0), vec![0.0, 3.0, 4.0, 7.0, 8.0, 11.0]);
+        assert_eq!(starts(&mk("global"), 0), vec![0.0, 3.0, 6.0, 9.0]);
+        assert_eq!(starts(&mk("global"), 1).len(), 8, "chordal 也按全曲相位：0 2 3 5 6 8 9 11");
+        let gp = mk("global");
+        let g = arranged(&gp).unwrap();
+        // 第二段（F）里的 chordal 取 F 的音，不是前一段的 C。
+        assert!(g.tracks[1].clips[1].notes.iter().all(|n| [5, 0].contains(&(n.pitch % 12))), "{:?}", g.tracks[1].clips[1].notes);
+    }
 
     fn project(v: serde_json::Value) -> Project {
         let p: Project = serde_json::from_value(v).unwrap();

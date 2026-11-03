@@ -82,6 +82,21 @@ impl FormEntry {
     }
 }
 
+/// part 的循环从哪里算起（[`Part::align`]）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Align {
+    #[default]
+    Section,
+    Global,
+}
+
+impl Align {
+    fn is_section(&self) -> bool {
+        *self == Align::Section
+    }
+}
+
 /// 音轨在一个段落里演奏的内容：clip 的写法（不写起点），加上按和弦写的音型、循环长度、结尾替换与变换。
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -89,6 +104,10 @@ pub struct Part {
     /// 循环长度（拍）：内容按这个长度重复铺满段落。缺省 = 段落长度（不循环）；chordal 缺省 = 音型长度。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub length: Option<f64>,
+    /// 循环从哪里算起：`section`（缺省）每个段落从头开始；`global` 从工程开头（第 0 拍）算起、跨段落不重置——
+    /// polymeter 的 5 / 7 / 13 步循环一直漂移下去，段落长度改了也不用重算。
+    #[serde(default, skip_serializing_if = "Align::is_section")]
+    pub align: Align,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub notes: Vec<Note>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
