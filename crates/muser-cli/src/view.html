@@ -412,7 +412,8 @@
             <label class="hint"><span data-i18n="recCountIn">Count-in</span> <select id="rec-countin"><option value="1">1</option><option value="2">2</option><option value="0">0</option></select></label>
             <label class="hint"><span data-i18n="recNudge">Latency (ms)</span> <input id="rec-nudge" type="number" value="0" step="5" style="width:56px"></label>
           </div>
-          <div class="row"><button id="rec-btn" class="primary" data-i18n="recStart">● Record from the playhead</button></div>
+          <div class="row"><button id="rec-btn" class="primary" data-i18n="recStart">● Record from the playhead</button>
+            <button id="rec-measure" data-i18n="recMeasure" data-title="recMeasureHint">Measure latency</button></div>
           <p class="hint" id="rec-status" data-i18n="recHelp">Records from the playhead, or only the loop range when one is set. Each take is saved in recordings/; Save writes the chosen ones into the project.</p>
           <pre id="lyrics" hidden></pre>
           <div id="takes"></div>
@@ -484,6 +485,8 @@ const I18N = {
     bypassChange: (b) => `bypass → [${b.map((x) => (x ? "off" : "on")).join(", ")}]`, fxBypassed: "bypassed (click to turn on)", fxActive: "on (click to bypass)",
     export: "Export", exportNote: "Current mix, including page changes", exportWav: "Mix (WAV)", exportMidi: "MIDI",
     karaoke: "Lyrics", cutHint: "Scissors: click an audio clip to cut it there (C). Drag an audio clip to move it (Shift snaps to 1/16 notes); click one to select it, then ← → nudge it 10 ms (Shift: 1/16 note)",
+    recMeasure: "Measure latency", recMeasureHint: "Take off the headphones and turn the volume up: muser plays 8 clicks and listens for them through the microphone, then fills in the latency",
+    recMeasuring: "Listening for the clicks… keep quiet", recMeasured: (ms) => `Round trip measured; latency set to ${ms} ms`, recMeasureFailed: "Couldn't hear the clicks: take off the headphones, turn the volume up and try again",
     recTitle: "Record a voice", recNote: "Wear headphones", recTrack: "Track", recCountIn: "Count-in bars", recNudge: "Latency (ms)",
     recStart: "● Record from the playhead", recLoop: "● Record the loop range", recStop: "■ Stop recording",
     recHelp: "Records from the playhead, or only the loop range when one is set. Each take is saved in recordings/; Save writes the chosen ones into the project.",
@@ -541,6 +544,8 @@ const I18N = {
     bypassChange: (b) => `效果器 → [${b.map((x) => (x ? "旁通" : "开")).join("，")}]`, fxBypassed: "已旁通（点一下打开）", fxActive: "开着（点一下旁通）",
     export: "导出", exportNote: "当前混音，含页面上的改动", exportWav: "整首混音（WAV）", exportMidi: "MIDI",
     karaoke: "歌词", cutHint: "剪刀：点音频片段，在那里剪开（快捷键 C）。拖动音频片段挪位置（按住 Shift 对齐 1/16 音符）；点一下选中，再按 ← → 每次微调 10 毫秒（Shift：1/16 音符）",
+    recMeasure: "测延迟", recMeasureHint: "摘下耳机、把音量开大：muser 放 8 下咔嗒声，用麦克风听回来，自动填好延迟微调",
+    recMeasuring: "正在听咔嗒声……请保持安静", recMeasured: (ms) => `测好了：延迟微调设为 ${ms} 毫秒`, recMeasureFailed: "没听到咔嗒声：摘下耳机、把音量开大再试一次",
     recTitle: "录人声", recNote: "请戴耳机", recTrack: "轨名", recCountIn: "预备小节", recNudge: "延迟微调（毫秒）",
     recStart: "● 从播放头开始录", recLoop: "● 录循环区间", recStop: "■ 停止录音",
     recHelp: "从播放头开始录；设了循环区间就只录那一段。每一遍都存在 recordings/ 里，点「保存」才把选定的那遍写进工程。",
@@ -1508,6 +1513,51 @@ async function stopRecording() {
   } catch (e) { banner(String(e.message || e), "err"); $("rec-status").textContent = t("recHelp"); }
 }
 $("rec-btn").onclick = () => (rec ? stopRecording() : startRecording());
+// 延迟微调记在这台电脑上（每台机器、每副耳机都不一样）。
+$("rec-nudge").value = localStorage.getItem("muser.recNudge") || $("rec-nudge").value;
+$("rec-nudge").onchange = (e) => localStorage.setItem("muser.recNudge", e.target.value);
+// 测延迟：从扬声器放 8 下咔嗒声，麦克风听回来；录音时补的正是"放出去到录回来"的这段时间（减去浏览器已经报告的输出延迟）。
+$("rec-measure").onclick = async () => {
+  if (rec) return;
+  ensureCtx(); if (ctx.state === "suspended") await ctx.resume();
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } }); }
+  catch (_) { return banner(t("recNoMic"), "err"); }
+  $("rec-status").textContent = t("recMeasuring"); $("rec-measure").disabled = true;
+  const src = ctx.createMediaStreamSource(stream), proc = ctx.createScriptProcessor(2048, 1, 1), mute = ctx.createGain();
+  mute.gain.value = 0; src.connect(proc); proc.connect(mute); mute.connect(ctx.destination);
+  const blocks = [];
+  proc.onaudioprocess = (e) => blocks.push({ at: e.playbackTime - e.inputBuffer.duration, data: new Float32Array(e.inputBuffer.getChannelData(0)) });
+  const t0 = ctx.currentTime + 0.6, gap = 0.5, clicks = [];
+  for (let k = 0; k < 8; k++) {
+    const at = t0 + k * gap, o = ctx.createOscillator(), g = ctx.createGain();
+    o.frequency.value = 2000; g.gain.setValueAtTime(0.9, at); g.gain.exponentialRampToValueAtTime(0.001, at + 0.02);
+    o.connect(g).connect(ctx.destination); o.start(at); o.stop(at + 0.03); clicks.push(at);
+  }
+  await new Promise((r) => setTimeout(r, (t0 + 8 * gap + 0.4 - ctx.currentTime) * 1000));
+  proc.disconnect(); src.disconnect(); mute.disconnect(); stream.getTracks().forEach((x) => x.stop());
+  $("rec-measure").disabled = false;
+  const rate = ctx.sampleRate, delays = [];
+  const at = (b, i) => b.at + i / rate;
+  // 噪声底：第一下之前的电平。
+  let noise = 0, nn = 0;
+  for (const b of blocks) for (let i = 0; i < b.data.length; i++) if (at(b, i) < t0 - 0.05) { noise += b.data[i] * b.data[i]; nn++; }
+  const floor = Math.sqrt(noise / Math.max(1, nn));
+  for (const c of clicks) {
+    let peak = 0;
+    for (const b of blocks) for (let i = 0; i < b.data.length; i++) { const x = at(b, i); if (x >= c && x < c + gap * 0.8) peak = Math.max(peak, Math.abs(b.data[i])); }
+    if (peak < Math.max(0.02, floor * 8)) continue;
+    let onset = null;
+    for (const b of blocks) { for (let i = 0; i < b.data.length && onset === null; i++) { const x = at(b, i); if (x >= c && x < c + gap * 0.8 && Math.abs(b.data[i]) > peak * 0.3) onset = x; } if (onset !== null) break; }
+    if (onset !== null) delays.push(onset - c);
+  }
+  if (delays.length < 4) { $("rec-status").textContent = t("recMeasureFailed"); return; }
+  delays.sort((a, b) => a - b);
+  const roundTrip = delays[delays.length >> 1];
+  const ms = Math.round((roundTrip - (ctx.outputLatency || 0) - (ctx.baseLatency || 0)) * 1000);
+  $("rec-nudge").value = ms; localStorage.setItem("muser.recNudge", String(ms));
+  $("rec-status").textContent = t("recMeasured", ms);
+};
 
 // ---------- 时间线 ----------
 function drawTimeline() {
