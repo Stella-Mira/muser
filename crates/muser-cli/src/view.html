@@ -166,6 +166,15 @@
   .row { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 12px; }
   .row .primary { grid-column: 1 / -1; }
   .hint { margin: 0; color: var(--dim); font-size: 11px; line-height: 1.6; }
+  #karaoke { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 40; pointer-events: none;
+    padding: 12px 28px 14px; border-radius: 16px; background: rgba(6, 8, 14, .78); backdrop-filter: blur(6px); text-align: center; max-width: 92vw; }
+  #kara-now { font-size: 34px; font-weight: 700; letter-spacing: .06em; white-space: nowrap; }
+  #kara-next { font-size: 18px; color: rgba(255,255,255,.45); margin-top: 6px; white-space: nowrap; }
+  #kara-now span { color: rgba(255,255,255,.55); background-image: linear-gradient(90deg, var(--accent) 0 var(--p, 0%), transparent var(--p, 0%));
+    -webkit-background-clip: text; background-clip: text; }
+  #kara-now span.done { color: var(--accent); }
+  #kara-now span.now { color: transparent; }
+  .kara-toggle { display: inline-flex; align-items: center; gap: 4px; margin-right: 10px; cursor: pointer; }
   .rec input, .rec select { background: #0b0e16; color: var(--text, #dfe6f5); border: 1px solid #2a3043; border-radius: 6px; padding: 3px 6px; font: inherit; }
   #rec-btn.recording { background: #ff5d6c; border-color: #ff5d6c; }
   #lyrics { white-space: pre-wrap; font-size: 13px; line-height: 1.7; margin: 10px 0; padding: 10px; border-radius: 8px; background: #0b0e16; }
@@ -335,6 +344,7 @@
     <div class="shortcut"><span data-i18n="playShortcut">Play / pause</span> <kbd>SPACE</kbd></div>
   </div>
   <div class="banner" id="banner" role="status" aria-live="polite"></div>
+  <div id="karaoke" aria-live="off" hidden><div id="kara-now"></div><div id="kara-next"></div></div>
   <div id="loading" data-i18n="loading">Preparing audio engine…</div>
   <div id="app" hidden>
     <section class="transport-card" aria-label="Transport">
@@ -347,6 +357,7 @@
         <span class="time" id="time">0:00.0 / 0:00.0</span>
       </div>
       <div class="transport-options">
+        <label class="hint kara-toggle"><input type="checkbox" id="kara-on" checked> <span data-i18n="karaoke">Lyrics</span></label>
         <div class="loop-control">
           <label class="inline"><input type="checkbox" id="loop"> <span data-i18n="loop">Loop</span></label>
           <span id="loop-range" class="loop-range">Full song</span>
@@ -467,7 +478,7 @@ const I18N = {
     gainChange: (v) => `gain_db → ${v}`, muteChange: (v) => `muted → ${v}`,
     bypassChange: (b) => `bypass → [${b.map((x) => (x ? "off" : "on")).join(", ")}]`, fxBypassed: "bypassed (click to turn on)", fxActive: "on (click to bypass)",
     export: "Export", exportNote: "Current mix, including page changes", exportWav: "Mix (WAV)", exportMidi: "MIDI",
-    recTitle: "Record a voice", recNote: "Wear headphones", recTrack: "Track", recCountIn: "Count-in bars", recNudge: "Latency (ms)",
+    karaoke: "Lyrics", recTitle: "Record a voice", recNote: "Wear headphones", recTrack: "Track", recCountIn: "Count-in bars", recNudge: "Latency (ms)",
     recStart: "● Record from the playhead", recLoop: "● Record the loop range", recStop: "■ Stop recording",
     recHelp: "Records from the playhead, or only the loop range when one is set. Each take is saved in recordings/; Save writes the chosen ones into the project.",
     recCounting: "Count-in…", recRecording: "Recording… sing along", recUploading: "Saving the take…", recSaved: (f) => `Saved ${f}; press Save to keep it in the project`,
@@ -523,7 +534,7 @@ const I18N = {
     gainChange: (v) => `gain_db → ${v}`, muteChange: (v) => `muted → ${v}`,
     bypassChange: (b) => `效果器 → [${b.map((x) => (x ? "旁通" : "开")).join("，")}]`, fxBypassed: "已旁通（点一下打开）", fxActive: "开着（点一下旁通）",
     export: "导出", exportNote: "当前混音，含页面上的改动", exportWav: "整首混音（WAV）", exportMidi: "MIDI",
-    recTitle: "录人声", recNote: "请戴耳机", recTrack: "轨名", recCountIn: "预备小节", recNudge: "延迟微调（毫秒）",
+    karaoke: "歌词", recTitle: "录人声", recNote: "请戴耳机", recTrack: "轨名", recCountIn: "预备小节", recNudge: "延迟微调（毫秒）",
     recStart: "● 从播放头开始录", recLoop: "● 录循环区间", recStop: "■ 停止录音",
     recHelp: "从播放头开始录；设了循环区间就只录那一段。每一遍都存在 recordings/ 里，点「保存」才把选定的那遍写进工程。",
     recCounting: "预备拍……", recRecording: "正在录，跟着唱", recUploading: "正在存这一遍……", recSaved: (f) => `已存 ${f}；满意就点「保存」写进工程`,
@@ -1626,9 +1637,37 @@ function tick() {
       post("/api/transport", { action: "seek", seconds: loopStart / sr })
         .then(poll1).catch(() => {}).finally(() => { deviceLoopSeeking = false; });
     }
-    drawMeters(); $("time").textContent = `${fmtTime(position() / sr)} / ${fmtTime(total / sr)}`; drawTimeline();
+    drawMeters(); $("time").textContent = `${fmtTime(position() / sr)} / ${fmtTime(total / sr)}`; drawTimeline(); drawKaraoke();
   }
   requestAnimationFrame(tick);
+}
+
+// ---------- 卡拉 OK 歌词：屏幕底部，跟着播放位置逐字高亮 ----------
+$("kara-on").checked = localStorage.getItem("muser.karaoke") !== "off";
+$("kara-on").onchange = (e) => { localStorage.setItem("muser.karaoke", e.target.checked ? "on" : "off"); karaShown = null; };
+let karaShown = null;
+function drawKaraoke() {
+  const lines = data.karaoke || [], box = $("karaoke");
+  if (!$("kara-on").checked || !lines.length) { box.hidden = true; return; }
+  const s = position() / sr;
+  // 当前行：正在唱的，或下一行开始前 1.5 秒内的；行间停顿时停在上一行。
+  let i = lines.findIndex((l) => s < l.end + 0.4);
+  if (i < 0) { box.hidden = true; return; }
+  if (i > 0 && s < lines[i].start - 1.5) i -= 1;
+  box.hidden = false;
+  if (karaShown !== i) {
+    karaShown = i;
+    const now = $("kara-now"); now.textContent = "";
+    for (const tk of lines[i].tokens) { const sp = document.createElement("span"); sp.textContent = tk.text + (/^[\w']+$/.test(tk.text) ? " " : ""); now.appendChild(sp); }
+    $("kara-next").textContent = lines[i + 1] ? lines[i + 1].tokens.map((t) => t.text).join(/^[\w']+$/.test(lines[i + 1].tokens[0].text) ? " " : "") : "";
+  }
+  const spans = $("kara-now").children;
+  lines[i].tokens.forEach((tk, k) => {
+    const sp = spans[k]; if (!sp) return;
+    const p = Math.max(0, Math.min(1, (s - tk.start) / Math.max(0.05, tk.end - tk.start)));
+    sp.className = p >= 1 ? "done" : p > 0 ? "now" : "";
+    sp.style.setProperty("--p", (p * 100).toFixed(1) + "%");
+  });
 }
 
 // ---------- 交互 ----------

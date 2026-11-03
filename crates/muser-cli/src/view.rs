@@ -1228,6 +1228,7 @@ impl Shared {
             .map(|t| json!({ "take": t, "in_use": used(&st.working, &t.file), "saved": used(&st.file, &t.file) }))
             .collect::<Vec<_>>());
         out["lyrics"] = json!(st.file.as_ref().and_then(|f| f.lyrics.clone()));
+        out["karaoke"] = json!(st.file.as_ref().map(muser_engine::lyric::karaoke).unwrap_or_default());
         out["solo"] = json!(st.solo);
         out["project_path"] = json!(self.path.display().to_string());
         out["sound_edit"] = json!(cfg!(all(target_os = "macos", feature = "host")));

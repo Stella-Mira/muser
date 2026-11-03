@@ -345,3 +345,137 @@ mod tests {
         assert!(later.channel(0).iter().all(|&x| x == 0.0), "辅音过去以后不再出声");
     }
 }
+
+/// 卡拉 OK 的一行：起止（秒）与逐字的起止。
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct KaraokeLine {
+    pub start: f64,
+    pub end: f64,
+    pub tokens: Vec<KaraokeToken>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct KaraokeToken {
+    pub text: String,
+    pub start: f64,
+    pub end: f64,
+}
+
+/// 卡拉 OK 歌词：唱的时间来自第一条写了 `lyric` 的音轨（展开后的音符），显示的字来自工程的 `lyrics`——
+/// 每一行（去掉 `[A]` 这类段落标记）里的汉字一个字对一个音节，英文按词；字数和音节数对不上时显示音节本身。
+/// 没有 `lyrics` 时按音节显示，休止超过一拍半就换行。
+pub fn karaoke(project: &muser_core::Project) -> Vec<KaraokeLine> {
+    let Ok(p) = crate::arrange::arranged(project) else { return Vec::new() };
+    let spb = 60.0 / p.tempo;
+    let mut syl: Vec<(f64, f64, String)> = Vec::new();
+    for (ti, t) in p.tracks.iter().enumerate() {
+        for (ci, c) in t.clips.iter().enumerate() {
+            for n in crate::clip_notes(&p, ti, ci).unwrap_or_default() {
+                if let Some(l) = &n.lyric {
+                    let s = c.start.0 + n.start.0;
+                    syl.push((s * spb, (s + n.length.0.min(c.length.0 - n.start.0)) * spb, l.clone()));
+                }
+            }
+        }
+        if !syl.is_empty() {
+            break;
+        }
+    }
+    syl.sort_by(|a, b| a.0.total_cmp(&b.0));
+    syl.dedup_by(|b, a| (a.0 - b.0).abs() < 1e-9); // 和弦里同一个音节只算一次
+    if syl.is_empty() {
+        return Vec::new();
+    }
+    // 显示的字，按行。
+    let lines: Vec<Vec<String>> = project
+        .lyrics
+        .as_deref()
+        .unwrap_or("")
+        .lines()
+        .map(|l| match l.trim().strip_prefix('[') {
+            Some(rest) => rest.split_once(']').map_or("", |(_, r)| r),
+            None => l,
+        })
+        // 一句一行：逗号、句号也换行。
+        .flat_map(|l| l.split(['，', ',', '。', '；', ';', '！', '？']))
+        .map(tokens)
+        .filter(|t| !t.is_empty())
+        .collect();
+    let total: usize = lines.iter().map(Vec::len).sum();
+    let mut out = Vec::new();
+    if total == syl.len() {
+        let mut k = 0;
+        for line in lines {
+            let toks: Vec<KaraokeToken> = line
+                .into_iter()
+                .map(|text| {
+                    let (s, e, _) = &syl[k];
+                    k += 1;
+                    KaraokeToken { text, start: *s, end: *e }
+                })
+                .collect();
+            out.push(KaraokeLine { start: toks[0].start, end: toks.last().map_or(0.0, |t| t.end), tokens: toks });
+        }
+    } else {
+        let mut cur: Vec<KaraokeToken> = Vec::new();
+        for (s, e, text) in syl {
+            if cur.last().is_some_and(|l| s - l.end > 1.5 * spb) {
+                out.push(KaraokeLine { start: cur[0].start, end: cur.last().unwrap().end, tokens: std::mem::take(&mut cur) });
+            }
+            cur.push(KaraokeToken { text, start: s, end: e });
+        }
+        if !cur.is_empty() {
+            out.push(KaraokeLine { start: cur[0].start, end: cur.last().unwrap().end, tokens: cur });
+        }
+    }
+    out
+}
+
+/// 一行歌词拆成要唱的单位：汉字（和其它 CJK 字）一个一个，其余按词；标点、括号去掉。
+fn tokens(line: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut word = String::new();
+    for c in line.chars() {
+        let cjk = matches!(c as u32, 0x3400..=0x9FFF | 0xF900..=0xFAFF | 0x3040..=0x30FF | 0xAC00..=0xD7AF);
+        if cjk || !c.is_alphanumeric() {
+            if !word.is_empty() {
+                out.push(std::mem::take(&mut word));
+            }
+            if cjk {
+                out.push(c.to_string());
+            }
+        } else {
+            word.push(c);
+        }
+    }
+    if !word.is_empty() {
+        out.push(word);
+    }
+    out
+}
+
+#[cfg(test)]
+mod karaoke_tests {
+    use super::*;
+
+    #[test]
+    fn characters_follow_the_sung_syllables() {
+        let p: muser_core::Project = serde_json::from_value(serde_json::json!({ "tempo": 60,
+            "lyrics": "[A] 月亮升起，\n风吹（哼）",
+            "tracks": [{ "name": "v", "instrument": "choir.solo", "clips": [{ "start": 0, "length": 16,
+                "abc": "L:1/4\nK:C\nC D E F | z4 | G A B c |\nw: yue liang sheng qi | feng chui heng" }] }] }))
+        .unwrap();
+        let k = karaoke(&p);
+        assert_eq!(k.len(), 2, "逗号后面是空的，不算一行");
+        assert_eq!(k[0].tokens.iter().map(|t| t.text.as_str()).collect::<Vec<_>>(), vec!["月", "亮", "升", "起"]);
+        assert_eq!((k[0].tokens[1].start, k[0].tokens[1].end), (1.0, 2.0));
+        assert_eq!(k[1].tokens.iter().map(|t| t.text.as_str()).collect::<String>(), "风吹哼");
+        assert_eq!(k[1].start, 8.0);
+        // 字数对不上：按音节显示、按休止换行。
+        let mut q = p.clone();
+        q.lyrics = Some("月亮".into());
+        let k = karaoke(&q);
+        assert_eq!(k.len(), 2);
+        assert_eq!(k[1].tokens[0].text, "feng");
+    }
+}
