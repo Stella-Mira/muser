@@ -118,17 +118,19 @@ pub fn validate_score(project: &muser_core::Project) -> Result<(), EngineError> 
 pub fn warnings(project: &muser_core::Project) -> Vec<String> {
     let mut out = Vec::new();
     let bar = project.time_signature.beats_per_bar();
-    let abc_bars = |at: String, abc: &Option<String>, out: &mut Vec<String>| {
+    // 段落有自己的拍号时，该段落的 part 按它检查。
+    let meter_of = |key: &str| project.sections.get(key.split('#').next().unwrap_or(key)).map_or(bar, |s| project.section_meter(s).beats_per_bar());
+    let abc_bars = |at: String, abc: &Option<String>, bar: f64, out: &mut Vec<String>| {
         if let Some(a) = abc {
             out.extend(muser_core::abc::bar_problems(a, bar).unwrap_or_default().into_iter().map(|p| format!("{at}.abc: {p}")));
         }
     };
     for (ti, t) in project.tracks.iter().enumerate() {
         for (ci, c) in t.clips.iter().enumerate() {
-            abc_bars(format!("tracks[{ti}].clips[{ci}]"), &c.abc, &mut out);
+            abc_bars(format!("tracks[{ti}].clips[{ci}]"), &c.abc, bar, &mut out);
         }
         for (key, part) in &t.parts {
-            abc_bars(format!("tracks[{ti}].parts.{key}"), &part.abc, &mut out);
+            abc_bars(format!("tracks[{ti}].parts.{key}"), &part.abc, meter_of(key), &mut out);
             // 只有 notes / abc 的内容不循环：没写 length 时只放一遍。
             if part.length.is_some() || part.grid.is_some() || part.drummer.is_some() || part.chordal.is_some() || part.end.is_some() {
                 continue;
@@ -138,10 +140,11 @@ pub fn warnings(project: &muser_core::Project) -> Vec<String> {
             let end = notes.iter().map(|n| n.start.0 + n.length.0).fold(0.0, f64::max);
             let name = key.split('#').next().unwrap_or(key);
             let lens: Vec<f64> = if name == "*" {
-                project.sections.values().map(|s| f64::from(s.bars) * bar).collect()
+                project.sections.values().map(|s| f64::from(s.bars) * project.section_meter(s).beats_per_bar()).collect()
             } else {
-                project.sections.get(name).map(|s| f64::from(s.bars) * bar).into_iter().collect()
+                project.sections.get(name).map(|s| f64::from(s.bars) * project.section_meter(s).beats_per_bar()).into_iter().collect()
             };
+            let bar = meter_of(key);
             if let Some(len) = lens.into_iter().fold(None, |m: Option<f64>, l| Some(m.map_or(l, |m| m.max(l)))) {
                 if end > 0.0 && end < len * 0.85 {
                     let loop_len = (end / bar).ceil() * bar;

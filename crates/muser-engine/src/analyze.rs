@@ -118,7 +118,7 @@ pub fn analyze(project: &Project, audio: bool, settings: RenderSettings) -> Resu
     let spans = crate::arrange::timeline(project).map_err(invalid)?;
     let arranged = crate::arrange::arranged(project).map_err(invalid)?;
     let p = &*arranged;
-    let bar_beats = p.bar_beats();
+    let map = p.bar_map();
     // 每条音轨的音（绝对拍）。audio 音轨没有音符，不计。
     let mut tracks: Vec<(String, bool, Vec<Tone>)> = Vec::new();
     let mut vels: Vec<Vec<f32>> = Vec::new();
@@ -147,7 +147,7 @@ pub fn analyze(project: &Project, audio: bool, settings: RenderSettings) -> Resu
         vels.push(v);
     }
     let total_beats = p.duration_beats().0;
-    let bars = ((total_beats / bar_beats) - 1e-9).ceil().max(1.0) as usize;
+    let bars = map.bars_until(total_beats);
     let pitched: Vec<Tone> = tracks.iter().filter(|t| !t.1).flat_map(|t| t.2.iter().copied()).collect();
     let key = estimate_key(&pitched);
 
@@ -156,7 +156,7 @@ pub fn analyze(project: &Project, audio: bool, settings: RenderSettings) -> Resu
         (0..bars.div_ceil(8))
             .map(|i| {
                 let (a, b) = (i * 8, ((i + 1) * 8).min(bars));
-                (format!("bars {}–{}", a + 1, b), 1, a as f64 * bar_beats, (b - a) as f64 * bar_beats, Vec::new())
+                (format!("bars {}–{}", a + 1, b), 1, map.bar_start(a), map.bar_start(b) - map.bar_start(a), Vec::new())
             })
             .collect()
     } else {
@@ -165,7 +165,7 @@ pub fn analyze(project: &Project, audio: bool, settings: RenderSettings) -> Resu
 
     // 每小节的指纹（所有音轨的起音位置与音高），算重复度。
     let fingerprint = |b: usize| -> Vec<(usize, i64, u8)> {
-        let (a, z) = (b as f64 * bar_beats, (b + 1) as f64 * bar_beats);
+        let (a, z) = (map.bar_start(b), map.bar_start(b + 1));
         let mut f: Vec<(usize, i64, u8)> = tracks
             .iter()
             .enumerate()
@@ -183,8 +183,8 @@ pub fn analyze(project: &Project, audio: bool, settings: RenderSettings) -> Resu
     let mut sections = Vec::new();
     for (name_s, occurrence, start, length, chords) in &windows {
         let (a, z) = (*start, start + length);
-        let nbars = (length / bar_beats).round().max(1.0) as usize;
-        let first_bar = (a / bar_beats).round() as usize;
+        let first_bar = map.bar_at(a + 1e-9).0;
+        let nbars = map.bars_until(z).saturating_sub(first_bar).max(1);
         let inside = |n: &&Tone| n.start >= a - 1e-9 && n.start < z - 1e-9;
         let mut stats = Vec::new();
         let mut onsets = 0usize;
@@ -222,7 +222,7 @@ pub fn analyze(project: &Project, audio: bool, settings: RenderSettings) -> Resu
             let weighted: Vec<(Tone, f64)> = pitched.iter().map(|t| (*t, 1.0)).collect();
             let mut names = Vec::new();
             for b in 0..nbars {
-                let (x, y) = (a + b as f64 * bar_beats, a + (b + 1) as f64 * bar_beats);
+                let (x, y) = (map.bar_start(first_bar + b), map.bar_start(first_bar + b + 1));
                 if let Some((n, _)) = guess_chord(&weighted, x, y, key) {
                     names.push(format!("~{n}"));
                 }
@@ -232,7 +232,7 @@ pub fn analyze(project: &Project, audio: bool, settings: RenderSettings) -> Resu
         };
         // 冲突。
         let mut clashes: Vec<Clash> = Vec::new();
-        let at = |t: f64| ((t / bar_beats).floor() as usize + 1, round2((t % bar_beats) + 1.0));
+        let at = |t: f64| { let (b, into) = map.bar_at(t); (b + 1, round2(into + 1.0)) };
         let held: Vec<(&str, Tone)> = tracks
             .iter()
             .filter(|t| !t.1)
@@ -311,9 +311,9 @@ pub fn analyze(project: &Project, audio: bool, settings: RenderSettings) -> Resu
         }
         s.energy = (e * 10.0).round().clamp(0.0, 10.0) as u8;
     }
-    let tells = tells(project, &sections, &tracks, &prints, &unhumanized, key, bar_beats);
+    let tells = tells(project, &sections, &tracks, &prints, &unhumanized, key, &map);
     let mut findings = findings(&sections, &repeated_bar, &prints);
-    findings.splice(0..0, silent_sections(project, &sections, bar_beats));
+    findings.splice(0..0, silent_sections(project, &sections, &map));
     findings.retain(|f| !f.starts_with("各段响度只相差") && f != "没有发现明显的问题");
     findings.extend(tells.iter().filter(|t| t.hit).map(|t| format!("AI 味 #{} {}：{}", t.id, t.name, t.detail)));
     if findings.is_empty() {
@@ -376,7 +376,7 @@ fn tells(
     prints: &[Vec<(usize, i64, u8)>],
     unhumanized: &[String],
     key: crate::abc_export::Key,
-    bar_beats: f64,
+    map: &muser_core::BarMap,
 ) -> Vec<Tell> {
     let mut out = Vec::new();
     let mut tell = |id: u8, name: &str, hit: bool, detail: String| out.push(Tell { id, name: name.into(), hit, detail });
@@ -424,7 +424,7 @@ fn tells(
     if !drum_tones.is_empty() {
         let fill_bars: Vec<usize> = (0..prints.len())
             .filter(|&b| {
-                let (a, z) = (b as f64 * bar_beats, (b + 1) as f64 * bar_beats);
+                let (a, z) = (map.bar_start(b), map.bar_start(b + 1));
                 let toms = drum_tones.iter().filter(|t| t.start >= a && t.start < z && [41, 43, 45, 47, 48, 50].contains(&t.pitch)).count();
                 let rolls = drum_tones.iter().filter(|t| t.start >= z - 2.0 && t.start < z && [37, 38, 40].contains(&t.pitch)).count();
                 toms >= 3 || rolls >= 4
@@ -470,7 +470,7 @@ fn tells(
 
 /// 几乎没有声音的段落（平均电平低于 −45 dB，或整段静音），并说出从工程里看得出的原因。
 /// 来自 dreamer 四首的教训：主输出音量曲线和音轨的淡入淡出叠在一起，一整段就没声了，agent 听不到。
-fn silent_sections(p: &Project, sections: &[SectionReport], bar_beats: f64) -> Vec<String> {
+fn silent_sections(p: &Project, sections: &[SectionReport], map: &muser_core::BarMap) -> Vec<String> {
     const QUIET_DB: f64 = -45.0;
     let mut out = Vec::new();
     for s in sections {
@@ -478,7 +478,8 @@ fn silent_sections(p: &Project, sections: &[SectionReport], bar_beats: f64) -> V
         if a.lufs.is_finite() && a.rms_db >= QUIET_DB {
             continue;
         }
-        let (start, len) = ((s.bar - 1) as f64 * bar_beats, s.bars as f64 * bar_beats);
+        let start = map.bar_start(s.bar - 1);
+        let len = map.bar_start(s.bar - 1 + s.bars) - start;
         // 段内 8 个点的平均：自动化有值就用它，没有就是静态值。
         let level = |autos: &[muser_core::Automation], target: &str, base: f64| {
             let curve = autos.iter().find(|x| x.target == target).map(|x| {
@@ -617,6 +618,25 @@ fn findings(sections: &[SectionReport], repeated_bar: &[bool], prints: &[Vec<(us
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sections_with_their_own_meter() {
+        let p: Project = serde_json::from_value(serde_json::json!({ "tempo": 120,
+            "sections": { "a": { "bars": 2, "chords": "C" },
+                          "odd": { "bars": 3, "chords": "F G A", "time_signature": { "numerator": 7, "denominator": 8 } } },
+            "form": ["a", "odd", "a"],
+            "tracks": [{ "name": "pad", "instrument": "poly.juno_keys", "parts": { "*": { "chordal": "c", "step": 1, "octave": 4 } } }] }))
+        .unwrap();
+        let spans = crate::arrange::timeline(&p).unwrap();
+        assert_eq!(spans.iter().map(|s| (s.start, s.length)).collect::<Vec<_>>(), vec![(0.0, 8.0), (8.0, 10.5), (18.5, 8.0)]);
+        // 7/8 段落的和弦每个 3.5 拍。
+        assert_eq!(spans[1].chords.iter().map(|c| c.start).collect::<Vec<_>>(), vec![8.0, 11.5, 15.0]);
+        let r = analyze(&p, false, RenderSettings::default()).unwrap();
+        assert_eq!(r.sections.iter().map(|s| (s.bar, s.bars)).collect::<Vec<_>>(), vec![(1, 2), (3, 3), (6, 2)]);
+        let midi = crate::midi::export(&p).unwrap().bytes;
+        let ts_events = midi.windows(3).filter(|w| w == &[0xFF, 0x58, 0x04]).count();
+        assert_eq!(ts_events, 3, "4/4、7/8、回到 4/4");
+    }
 
     #[test]
     fn warns_about_a_section_the_master_curve_silences() {

@@ -23,6 +23,9 @@ use crate::Note;
 #[serde(deny_unknown_fields)]
 pub struct Section {
     pub bars: u32,
+    /// 这一段的拍号（如 `{"numerator": 7, "denominator": 8}`）；不写就用工程的 `time_signature`。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub time_signature: Option<crate::TimeSignature>,
     /// 和弦进行，如 `"Am7 F C G"`（每个一小节）、`"F G | Em Am"`（`|` 分小节，一小节里平分）。比段落短时循环。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chords: Option<String>,

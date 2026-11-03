@@ -26,7 +26,6 @@ pub struct SectionSpan {
 
 /// 曲式的时间线。没有 `form` 时为空。
 pub fn timeline(project: &Project) -> Result<Vec<SectionSpan>, String> {
-    let bar = project.bar_beats();
     let mut out = Vec::new();
     let mut count = std::collections::HashMap::<&str, usize>::new();
     let mut t = 0.0;
@@ -35,6 +34,7 @@ pub fn timeline(project: &Project) -> Result<Vec<SectionSpan>, String> {
         let sec = project.sections.get(name).ok_or_else(|| format!("form[{fi}]: 没有段落 '{name}'"))?;
         let k = count.entry(name).or_default();
         *k += 1;
+        let bar = project.section_meter(sec).beats_per_bar();
         let length = f64::from(sec.bars) * bar;
         let chords = match &sec.chords {
             Some(c) => chord::progression(c, sec.bars, bar)

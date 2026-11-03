@@ -109,14 +109,36 @@ impl Project {
             .fold(Beats(self.form_beats()), |acc, b| if b.0 > acc.0 { b } else { acc })
     }
 
-    /// 一小节多少拍（四分音符为一拍）。
+    /// 一小节多少拍（四分音符为一拍），工程的拍号。段落可以有自己的拍号，按位置换算小节用 [`Self::bar_map`]。
     pub fn bar_beats(&self) -> f64 {
         f64::from(self.time_signature.numerator) * 4.0 / f64::from(self.time_signature.denominator)
     }
 
+    /// 段落的拍号：段落写了就用它，否则用工程的。
+    pub fn section_meter(&self, s: &arrange::Section) -> TimeSignature {
+        s.time_signature.unwrap_or(self.time_signature)
+    }
+
     /// 曲式的总长（拍）。段落名不存在时不计（校验会报错）。
     pub fn form_beats(&self) -> f64 {
-        self.form.iter().filter_map(|e| self.sections.get(e.section())).map(|s| f64::from(s.bars) * self.bar_beats()).sum()
+        self.form.iter().filter_map(|e| self.sections.get(e.section())).map(|s| f64::from(s.bars) * self.section_meter(s).beats_per_bar()).sum()
+    }
+
+    /// 拍号表：小节和拍之间的换算（段落各有拍号时，小节不再一样长）。
+    pub fn bar_map(&self) -> BarMap {
+        let mut segs: Vec<(f64, TimeSignature)> = vec![(0.0, self.time_signature)];
+        let mut t = 0.0;
+        for s in self.form.iter().filter_map(|e| self.sections.get(e.section())) {
+            let ts = self.section_meter(s);
+            if segs.last().is_some_and(|l| l.1 != ts) {
+                if segs.last().is_some_and(|l| l.0 == t) {
+                    segs.pop();
+                }
+                segs.push((t, ts));
+            }
+            t += f64::from(s.bars) * ts.beats_per_bar();
+        }
+        BarMap { segs }
     }
 
     /// 记下工程文件的位置（音频片段的相对路径相对它所在目录）。
@@ -274,7 +296,7 @@ impl Project {
                 return Err(format!("sections.{name}: 段落名不能含 # 或是 *"));
             }
             if let Some(c) = &sec.chords {
-                chord::progression(c, sec.bars, self.bar_beats()).map_err(|e| format!("sections.{name}.chords: {e}"))?;
+                chord::progression(c, sec.bars, self.section_meter(sec).beats_per_bar()).map_err(|e| format!("sections.{name}.chords: {e}"))?;
             }
         }
         for (i, e) in self.form.iter().enumerate() {
@@ -573,9 +595,80 @@ pub enum CoreError {
     Invalid(String),
 }
 
+/// 拍号表（[`Project::bar_map`]）：每次换拍号的位置（拍）与拍号，第一项在 0；曲式之后保持最后的拍号。
+#[derive(Debug, Clone, PartialEq)]
+pub struct BarMap {
+    pub segs: Vec<(f64, TimeSignature)>,
+}
+
+impl BarMap {
+    /// 第 `beat` 拍在第几小节（从 0 起）、小节里第几拍（从 0 起）。
+    pub fn bar_at(&self, beat: f64) -> (usize, f64) {
+        let mut first = 0usize;
+        for (i, &(start, ts)) in self.segs.iter().enumerate() {
+            let bb = ts.beats_per_bar();
+            let end = self.segs.get(i + 1).map_or(f64::INFINITY, |n| n.0);
+            if beat < end - 1e-9 || i + 1 == self.segs.len() {
+                let into = (beat - start).max(0.0);
+                let k = (into / bb + 1e-9).floor();
+                return (first + k as usize, (into - k * bb).max(0.0));
+            }
+            first += ((end - start) / bb).round() as usize;
+        }
+        (0, beat)
+    }
+
+    /// 第 `bar` 小节（从 0 起）从第几拍开始。
+    pub fn bar_start(&self, bar: usize) -> f64 {
+        let mut first = 0usize;
+        for (i, &(start, ts)) in self.segs.iter().enumerate() {
+            let bb = ts.beats_per_bar();
+            let n = self.segs.get(i + 1).map_or(usize::MAX, |next| ((next.0 - start) / bb).round() as usize);
+            if bar < first.saturating_add(n) {
+                return start + (bar - first) as f64 * bb;
+            }
+            first += n;
+        }
+        0.0
+    }
+
+    /// 第 `bar` 小节（从 0 起）的拍号。
+    pub fn meter_of(&self, bar: usize) -> TimeSignature {
+        let b = self.bar_start(bar);
+        self.segs.iter().rev().find(|s| s.0 <= b + 1e-9).map_or(self.segs[0].1, |s| s.1)
+    }
+
+    /// 到第 `beat` 拍为止一共几个小节（不足一小节算一小节）。
+    pub fn bars_until(&self, beat: f64) -> usize {
+        let (bar, into) = self.bar_at(beat);
+        if into > 1e-9 { bar + 1 } else { bar }.max(1)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bar_map_follows_section_meters() {
+        let p: Project = serde_json::from_value(serde_json::json!({ "tempo": 120,
+            "sections": { "a": { "bars": 2 }, "b": { "bars": 3, "time_signature": { "numerator": 7, "denominator": 8 } } },
+            "form": ["a", "b", "a"], "tracks": [] }))
+        .unwrap();
+        let m = p.bar_map();
+        // a: 2 × 4 拍 = 0–8；b: 3 × 3.5 拍 = 8–18.5；a: 18.5–26.5，之后保持 4/4。
+        assert_eq!(p.form_beats(), 26.5);
+        assert_eq!(m.segs.len(), 3);
+        assert_eq!(m.bar_at(0.0), (0, 0.0));
+        assert_eq!(m.bar_at(9.0), (2, 1.0));
+        assert_eq!(m.bar_at(11.5), (3, 0.0));
+        assert_eq!(m.bar_at(19.5), (5, 1.0));
+        assert_eq!(m.bar_at(30.5), (8, 0.0));
+        assert_eq!((m.bar_start(2), m.bar_start(4), m.bar_start(5), m.bar_start(7)), (8.0, 15.0, 18.5, 26.5));
+        assert_eq!(m.meter_of(3).numerator, 7);
+        assert_eq!(m.meter_of(5).numerator, 4);
+        assert_eq!(m.bars_until(26.5), 7);
+    }
 
     #[test]
     fn roundtrip_json() {

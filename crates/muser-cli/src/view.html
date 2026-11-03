@@ -577,7 +577,7 @@ function loopBounds() {
 }
 function defaultLoopFrames() {
   if (!data) return sr * 8;
-  return Math.max(1, Math.round(data.beats_per_bar * 4 * 60 / data.tempo * sr));
+  return Math.max(1, Math.round((data.bar_starts[4] ?? data.beats_per_bar * 4) * 60 / data.tempo * sr));
 }
 function snapLoopFrame(frame) {
   if (!data) return Math.round(frame);
@@ -1327,8 +1327,8 @@ function drawTimeline() {
   g.font = "10px system-ui"; g.textBaseline = "middle";
   const barWidth = data.beats_per_bar * secPerBeat / dur * W;
   const step = Math.max(1, Math.ceil(28 / (barWidth || 1)));
-  for (let bar = 0; bar * data.beats_per_bar * secPerBeat < dur; bar++) {
-    const bx = x(bar * data.beats_per_bar);
+  for (let bar = 0; bar < data.bar_starts.length && data.bar_starts[bar] * secPerBeat < dur; bar++) {
+    const bx = x(data.bar_starts[bar]);
     g.fillStyle = bar % step ? "#1a1e2c" : "#2b3145"; g.fillRect(bx, rulerH, 1, H - rulerH);
     if (bar % step === 0) { g.fillStyle = "#737c93"; g.fillText(String(bar + 1).padStart(2, "0"), bx + 4, rulerH / 2); }
   }
@@ -1374,8 +1374,8 @@ function drawTrackLanes() {
     g.fillStyle = i % 2 ? "#0e111b" : "#10131e"; g.fillRect(0, 0, W, H);
     const barWidth = data.beats_per_bar * secPerBeat / dur * W;
     const step = Math.max(1, Math.ceil(28 / (barWidth || 1)));
-    for (let bar = 0; bar * data.beats_per_bar * secPerBeat < dur; bar++) {
-      const bx = x(bar * data.beats_per_bar);
+    for (let bar = 0; bar < data.bar_starts.length && data.bar_starts[bar] * secPerBeat < dur; bar++) {
+      const bx = x(data.bar_starts[bar]);
       g.fillStyle = bar % step ? "#1a1e2b" : "#2a3043"; g.fillRect(bx, 0, 1, H);
     }
     const colors = lanePalette[i % lanePalette.length];

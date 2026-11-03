@@ -861,6 +861,7 @@ impl Renderer {
         // 编曲层（form / parts）展开成普通 clip，之后只看展开后的工程。
         let arranged = crate::arrange::arranged(project).map_err(invalid)?;
         let project = &*arranged;
+        // shortcut: 插件看到的拍号是工程的，段落换拍号时插件的小节位置不跟着变；要跟时按 bar_map 每段更新 transport。
         let ts = project.time_signature;
         let _transport = crate::transport::set(project.tempo, u16::from(ts.numerator), u16::from(ts.denominator));
         let cx = Ctx::new(project, settings);

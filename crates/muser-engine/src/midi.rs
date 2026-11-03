@@ -51,7 +51,6 @@ pub fn export(project: &Project) -> Result<MidiExport, EngineError> {
     let sections = crate::arrange::timeline(project).map_err(|e| EngineError::Core(muser_core::CoreError::Invalid(e)))?;
     let arranged = crate::arrange::arranged(project).map_err(|e| EngineError::Core(muser_core::CoreError::Invalid(e)))?;
     let project = &*arranged;
-    let ts = project.time_signature;
     let mut conductor = Track::new();
     conductor.push_meta(0, MetaEvent::TrackName(if project.name.is_empty() { "muser".into() } else { project.name.clone() }));
     conductor.push_meta(0, MetaEvent::Tempo((60_000_000.0 / project.tempo).round() as u32));
@@ -61,12 +60,15 @@ pub fn export(project: &Project) -> Result<MidiExport, EngineError> {
         let label = if sections.iter().filter(|x| x.name == s.name).count() > 1 { format!("{} {}", s.name, s.occurrence) } else { s.name.clone() };
         conductor.push_meta(tick, MetaEvent::Marker(label));
     }
-    conductor.push_meta(0, MetaEvent::TimeSignature {
-        numerator: ts.numerator,
-        denominator_power: ts.denominator.max(1).trailing_zeros() as u8,
-        clocks_per_click: 24,
-        thirty_seconds_per_quarter: 8,
-    });
+    // 拍号：开头一个，段落换拍号的地方各一个。
+    for (beat, ts) in project.bar_map().segs {
+        conductor.push_meta((beat * f64::from(TICKS_PER_QUARTER)).round() as u64, MetaEvent::TimeSignature {
+            numerator: ts.numerator,
+            denominator_power: ts.denominator.max(1).trailing_zeros() as u8,
+            clocks_per_click: 24,
+            thirty_seconds_per_quarter: 8,
+        });
+    }
     let mut tracks = vec![conductor];
     let mut skipped = Vec::new();
     let mut melodic = (0u8..16).filter(|&c| c != 9).cycle();

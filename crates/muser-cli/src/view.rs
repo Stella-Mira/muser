@@ -406,9 +406,13 @@ fn summary(working: &Project, solo: &BTreeSet<String>) -> Value {
             "gain_auto": has_gain_automation(&b.automation), "chain": chain(&b.effects),
         }));
     }
+    // 每小节从第几拍开始（段落可以各有拍号）；多给 16 小节盖住结尾的余响。
+    let map = working.bar_map();
+    let bar_starts: Vec<f64> = (0..map.bars_until(working.duration_beats().0) + 16).map(|b| map.bar_start(b)).collect();
     json!({
         "name": working.name, "tempo": working.tempo,
-        "beats_per_bar": working.time_signature.numerator,
+        "beats_per_bar": working.bar_beats(),
+        "bar_starts": bar_starts,
         "time_signature": format!("{}/{}", working.time_signature.numerator, working.time_signature.denominator),
         "duration_beats": working.duration_beats().0,
         "master_gain_db": working.master_gain_db, "master_effects": fx(&working.master_effects),

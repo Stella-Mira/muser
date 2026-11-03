@@ -53,11 +53,14 @@ pub fn export(project: &Project, fps: Option<u32>, settings: RenderSettings) -> 
         "name": p.name, "tempo": p.tempo, "seconds_per_beat": spb,
         "time_signature": [p.time_signature.numerator, p.time_signature.denominator],
         "duration": r3(beats * spb),
-        "sections": sections.iter().map(|s| json!({
-            "name": s.name, "occurrence": s.occurrence,
-            "start": r3(s.start * spb), "end": r3((s.start + s.length) * spb),
-            "bars": (s.length / p.bar_beats()).round(),
-        })).collect::<Vec<_>>(),
+        "sections": sections.iter().map(|s| {
+            let ts = p.sections.get(&s.name).map_or(p.time_signature, |x| p.section_meter(x));
+            json!({
+                "name": s.name, "occurrence": s.occurrence,
+                "start": r3(s.start * spb), "end": r3((s.start + s.length) * spb),
+                "bars": (s.length / ts.beats_per_bar()).round(), "time_signature": [ts.numerator, ts.denominator],
+            })
+        }).collect::<Vec<_>>(),
         "tracks": tracks,
         "master": { "gain_db": p.master_gain_db, "automation": curves(&p.automation, beats, spb) },
         "notes_format": "[start_seconds, midi_pitch, velocity_0_127, duration_seconds]",

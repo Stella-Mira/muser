@@ -23,7 +23,10 @@
 
 ## sections / form
 
-- `sections`：段落名 → `bars`（小节数）与 `chords`（可省略）。
+- `sections`：段落名 → `bars`（小节数）与 `chords`（可省略），可选 `time_signature`：这一段自己的拍号，
+  如 `"bridge": { "bars": 4, "time_signature": { "numerator": 7, "denominator": 8 } }`（不写用工程的）。和弦按这一段的小节长度排，
+  `analyze` 的小节号、MIDI 导出（每次换拍号写一个拍号事件）、`muser view` 的小节线都跟着变。
+  注意：`drummer` 的鼓型按 4 拍一小节写，在别的拍号里用 `grid` / `abc`；ABC 导出仍按工程拍号排小节（会提示）。
 - `form`：从工程开头起按顺序演奏的段落。一项可以是名字，或带这一遍的参数：
   - `transpose`：这一遍移调（半音；和弦、chordal、旋律一起移，鼓组不动）。最后一遍副歌升调用它。
   - `mute`：这一遍休息的音轨名。

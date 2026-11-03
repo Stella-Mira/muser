@@ -514,6 +514,10 @@ pub fn export(project: &Project, opts: &AbcOptions) -> Result<AbcExport, EngineE
     });
     let ts = project.time_signature;
     let bar_beats = f64::from(ts.numerator) * 4.0 / f64::from(ts.denominator);
+    // shortcut: 小节按工程拍号等长排；段落各有拍号时只提示，换拍号的段落小节线会错位。要支持时改成按 bar_map 排小节、写 [M:] 内联。
+    if project.bar_map().segs.len() > 1 {
+        notes.push(format!("有段落用了不同的拍号：ABC 里小节一律按工程拍号 {}/{} 排，那些段落的小节线会错位", ts.numerator, ts.denominator));
+    }
     let bar_units = (bar_beats / unit).round() as usize;
     let end_beats = used.iter().map(|t| t.end).fold(0.0, f64::max).max(project.duration_beats().0);
     let bars = ((end_beats / bar_beats) - 1e-9).ceil().max(1.0) as usize;
