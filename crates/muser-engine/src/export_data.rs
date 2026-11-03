@@ -109,13 +109,12 @@ fn envelope(audio: &manguebyte::prelude::AudioBuffer<f32>, sr: u32, fps: u32) ->
     while start < n {
         let end = (start + hop).min(n);
         let (mut s, mut l) = (0.0f64, 0.0f64);
-        for ch in 0..chans {
-            let x = audio.channel(ch);
-            for &v in &x[start..end] {
+        for (ch, y) in lp.iter_mut().enumerate() {
+            for &v in &audio.channel(ch)[start..end] {
                 let v = f64::from(v);
-                lp[ch] += a * (v - lp[ch]);
+                *y += a * (v - *y);
                 s += v * v;
-                l += lp[ch] * lp[ch];
+                l += *y * *y;
             }
         }
         let count = ((end - start) * chans) as f64;
