@@ -1305,11 +1305,32 @@ pub fn render_to_wav_with_progress(
     progress: &mut dyn FnMut(usize, usize),
 ) -> Result<(f64, f64), EngineError> {
     let audio = render_inner(project, settings, &mut RenderCache::new(), None, Some(progress))?;
-    wav::write_file(path, &audio, settings.sample_rate, WavFormat::Int16)
+    let file = std::fs::File::create(path).map_err(|e| EngineError::Wav(format!("写不了 {path}: {e}")))?;
+    wav::write_with_metadata(std::io::BufWriter::new(file), &audio, settings.sample_rate, WavFormat::Int16, &wav_metadata(project, settings.sample_rate))
         .map_err(|e| EngineError::Wav(format!("{e:?}")))?;
     let seconds = audio.num_frames() as f64 / f64::from(settings.sample_rate);
     let peak_db = decibels::gain_to_db(f64::from(audio.peak()));
     Ok((seconds, peak_db))
+}
+
+/// 写进 WAV 的信息：标题、速度、生成软件，以及每个段落起点的标记（cue point，名字如 `chorus`、第二遍 `chorus#2`），
+/// DAW 和播放器打开就能按段落跳转。没有 `form` 时没有标记。
+pub fn wav_metadata(project: &Project, sample_rate: u32) -> manguebyte::formats::Metadata {
+    let mut m = manguebyte::formats::Metadata { bpm: Some(project.tempo as f32), ..Default::default() };
+    if !project.name.is_empty() {
+        m.title = Some(project.name.clone());
+    }
+    m.tags.push(("ISFT".into(), format!("muser {}", env!("CARGO_PKG_VERSION"))));
+    let frames = |beats: f64| (beats * 60.0 / project.tempo * f64::from(sample_rate)).round().max(0.0) as u64;
+    for (i, s) in crate::arrange::timeline(project).unwrap_or_default().iter().enumerate() {
+        m.cue_points.push(manguebyte::formats::metadata::CuePoint {
+            id: i as u32 + 1,
+            position: frames(s.start),
+            length: frames(s.start + s.length) - frames(s.start),
+            label: Some(if s.occurrence > 1 { format!("{}#{}", s.name, s.occurrence) } else { s.name.clone() }),
+        });
+    }
+    m
 }
 
 /// 一条分轨：音轨名、写到的文件、峰值 dBFS。
@@ -1343,7 +1364,10 @@ pub fn render_stems(
         let audio = render_inner(&q, settings, &mut cache, None, Some(&mut |done, total| progress(&name, n * total + done, live.len() * total)))?;
         let safe: String = name.chars().map(|c| if c.is_alphanumeric() || "-_.".contains(c) { c } else { '_' }).collect();
         let path = dir.join(format!("{:02}-{safe}.wav", n + 1));
-        wav::write_file(&path, &audio, settings.sample_rate, WavFormat::Int16).map_err(|e| EngineError::Wav(format!("{e:?}")))?;
+        let mut meta = wav_metadata(project, settings.sample_rate);
+        meta.title = Some(name.clone());
+        let file = std::fs::File::create(&path).map_err(|e| EngineError::Wav(format!("写不了 {}: {e}", path.display())))?;
+        wav::write_with_metadata(std::io::BufWriter::new(file), &audio, settings.sample_rate, WavFormat::Int16, &meta).map_err(|e| EngineError::Wav(format!("{e:?}")))?;
         out.push(Stem { track: name, path, peak_db: decibels::gain_to_db(f64::from(audio.peak())) });
     }
     Ok(out)
@@ -1352,6 +1376,23 @@ pub fn render_stems(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wav_marks_each_section_start() {
+        let p: Project = serde_json::from_value(serde_json::json!({ "name": "cues", "tempo": 120,
+            "sections": { "verse": { "bars": 1 }, "chorus": { "bars": 1 } },
+            "form": ["verse", "chorus", "chorus"],
+            "tracks": [{ "name": "k", "instrument": "drums.909", "parts": { "*": { "grid": { "kick": "x..." } } } }] }))
+        .unwrap();
+        let path = std::env::temp_dir().join(format!("muser-cues-{}.wav", std::process::id()));
+        render_to_wav(&p, &path.to_string_lossy(), RenderSettings::default()).unwrap();
+        let f = wav::read_file(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+        let cues: Vec<(u64, String)> = f.metadata.cue_points.iter().map(|c| (c.position, c.label.clone().unwrap_or_default())).collect();
+        // 120 BPM、4/4：一小节 2 秒 = 96000 帧。
+        assert_eq!(cues, vec![(0, "verse".into()), (96_000, "chorus".into()), (192_000, "chorus#2".into())]);
+        assert_eq!(f.metadata.title.as_deref(), Some("cues"));
+    }
 
     #[test]
     fn stems_sum_back_to_the_mix_without_master_effects() {
