@@ -70,6 +70,36 @@ pub fn arranged(project: &Project) -> Result<Cow<'_, Project>, String> {
                 continue;
             }
             let Some(part) = arrange::pick(&track.parts, &span.name, span.occurrence) else { continue };
+            // global 对齐、没有 end 的 part：连续几段用的是同一个 part（同样的移调、没被静音）时合成一段 clip，
+            // 从第 0 拍一直数下去，音符跨过段落线也不被截断。前一段已经覆盖到这里就跳过。
+            let run_of = |k: usize| -> Option<&Part> {
+                let (e, sp) = (project.form.get(k)?, spans.get(k)?);
+                (!e.muted(&track.name) && e.transpose() == entry.transpose())
+                    .then(|| arrange::pick(&track.parts, &sp.name, sp.occurrence))
+                    .flatten()
+                    .filter(|p| std::ptr::eq(*p, part))
+            };
+            let global = part.align == muser_core::arrange::Align::Global && part.end.is_none();
+            if global && fi > 0 && run_of(fi - 1).is_some() {
+                continue;
+            }
+            let run_end = if global { (fi + 1..spans.len()).take_while(|&k| run_of(k).is_some()).last().unwrap_or(fi) } else { fi };
+            let span = &SectionSpan {
+                name: span.name.clone(),
+                occurrence: span.occurrence,
+                start: span.start,
+                length: spans[run_end].start + spans[run_end].length - span.start,
+                chords: span.chords.clone(),
+            };
+            let chords: Vec<Placed> = if run_end > fi {
+                spans[fi..=run_end]
+                    .iter()
+                    .flat_map(|sp| sp.chords.iter())
+                    .map(|p| Placed { start: p.start - span.start, length: p.length, chord: p.chord.transposed(-entry.transpose()) })
+                    .collect()
+            } else {
+                chords.clone()
+            };
             let at = format!("tracks[{ti}].parts.{}", span.name);
             let ctx = Ctx {
                 project,
@@ -142,10 +172,25 @@ pub fn part_blocks(project: &Project) -> Vec<Vec<(f64, f64, String)>> {
                 .iter()
                 .zip(&spans)
                 .filter(|(entry, _)| !t.parts.is_empty() && !entry.muted(&t.name))
-                .filter_map(|(_, span)| {
+                .filter_map(|(entry, span)| {
                     let key = [format!("{}#{}", span.name, span.occurrence), span.name.clone(), "*".into()].into_iter().find(|k| t.parts.contains_key(k))?;
-                    Some((span.start, span.length, key))
+                    Some((span.start, span.length, key, entry.transpose()))
                 })
+                // global 对齐的 part 在连续的段落里是一整段（与 arranged 合成的 clip 一致）。
+                .fold(Vec::<(f64, f64, String, i32)>::new(), |mut v, b| {
+                    let joins = v.last().is_some_and(|l| {
+                        l.2 == b.2 && l.3 == b.3 && (l.0 + l.1 - b.0).abs() < 1e-9
+                            && t.parts.get(&b.2).is_some_and(|p| p.align == muser_core::arrange::Align::Global && p.end.is_none())
+                    });
+                    if joins {
+                        v.last_mut().unwrap().1 += b.1;
+                    } else {
+                        v.push(b);
+                    }
+                    v
+                })
+                .into_iter()
+                .map(|(s, l, k, _)| (s, l, k))
                 .collect()
         })
         .collect()
@@ -451,6 +496,20 @@ mod tests {
                 "*": { "grid": { "kick": "x..." } }, "a#2": { "grid": { "snare": "x..." } } } }] }));
         let b = part_blocks(&p);
         assert_eq!(b[0], vec![(0.0, 4.0, "*".to_string()), (4.0, 8.0, "*".into()), (12.0, 4.0, "a#2".into())]);
+        let mut g = p.clone();
+        g.tracks[0].parts.get_mut("*").unwrap().align = muser_core::arrange::Align::Global;
+        assert_eq!(part_blocks(&g)[0], vec![(0.0, 12.0, "*".to_string()), (12.0, 4.0, "a#2".into())], "global 的连续段落合成一块");
+    }
+
+    #[test]
+    fn global_long_notes_cross_section_lines() {
+        let p = project(serde_json::json!({ "tempo": 120,
+            "sections": { "a": { "bars": 1 }, "b": { "bars": 1 } }, "form": ["a", "b"],
+            "tracks": [{ "name": "pad", "instrument": "poly.juno_keys", "parts": { "*": {
+                "notes": [{ "pitch": 60, "start": 3, "length": 3 }], "length": 6, "align": "global" } } }] }));
+        let a = arranged(&p).unwrap();
+        let n = &a.tracks[0].clips[0].notes;
+        assert_eq!((n[0].start.0, n[0].length.0), (3.0, 3.0), "第 3 拍起的长音跨过第 4 拍的段落线，响满 3 拍");
     }
 
     #[test]
@@ -476,8 +535,12 @@ mod tests {
         assert_eq!(starts(&mk("global"), 1).len(), 8, "chordal 也按全曲相位：0 2 3 5 6 8 9 11");
         let gp = mk("global");
         let g = arranged(&gp).unwrap();
-        // 第二段（F）里的 chordal 取 F 的音，不是前一段的 C。
-        assert!(g.tracks[1].clips[1].notes.iter().all(|n| [5, 0].contains(&(n.pitch % 12))), "{:?}", g.tracks[1].clips[1].notes);
+        // 连续三段用同一个 global part：合成一段 clip，从头数到尾。
+        assert_eq!(g.tracks[0].clips.len(), 1);
+        assert_eq!((g.tracks[0].clips[0].start.0, g.tracks[0].clips[0].length.0), (0.0, 12.0));
+        // 第二段（F，第 4–8 拍）里的 chordal 取 F 的音，不是前一段的 C。
+        let f: Vec<u8> = g.tracks[1].clips[0].notes.iter().filter(|n| n.start.0 >= 4.0 && n.start.0 < 8.0).map(|n| n.pitch % 12).collect();
+        assert!(!f.is_empty() && f.iter().all(|p| [5, 0].contains(p)), "{f:?}");
     }
 
     fn project(v: serde_json::Value) -> Project {
