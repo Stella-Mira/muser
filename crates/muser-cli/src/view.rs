@@ -364,6 +364,7 @@ fn summary(working: &Project, solo: &BTreeSet<String>) -> Value {
         .iter()
         .map(|s| json!({ "name": s.name, "occurrence": s.occurrence, "start": s.start, "length": s.length }))
         .collect();
+    let loops = muser_engine::arrange::loop_starts(working);
     let arranged = muser_engine::arrange::arranged(working);
     let working: &Project = match &arranged {
         Ok(a) => a,
@@ -395,6 +396,7 @@ fn summary(working: &Project, solo: &BTreeSet<String>) -> Value {
             "id": id, "kind": "track", "name": if t.name.is_empty() { id.clone() } else { t.name.clone() },
             "instrument": t.instrument, "label": t.instrument_params.get("@label"), "output": t.output.as_deref().unwrap_or("master"), "sends": t.sends,
             "gain_db": t.gain_db, "muted": t.muted, "solo": solo.contains(&id), "effects": fx(&t.effects), "clips": clips,
+            "loops": loops.get(i).cloned().unwrap_or_default(),
             "gain_auto": has_gain_automation(&t.automation), "chain": chain(&t.effects),
         }));
     }
