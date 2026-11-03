@@ -23,6 +23,8 @@ pub mod poly_library;
 #[cfg(feature = "devices")]
 pub mod playback;
 pub mod plugin;
+#[cfg(all(feature = "host", unix))]
+mod plugin_log;
 #[cfg(all(feature = "host", target_os = "macos"))]
 pub mod plugin_edit;
 pub mod profile;

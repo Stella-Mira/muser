@@ -15,6 +15,10 @@ thiserror = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
+# 插件自己往 stderr 打的日志转到文件（plugin_log.rs），只在 unix 上。
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 # 插件界面窗口（`muser plugin edit`，只在 macOS 上）。
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = { version = "0.6", optional = true }

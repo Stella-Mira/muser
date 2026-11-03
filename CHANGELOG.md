@@ -3,6 +3,12 @@
 Each release's notes on GitHub are the section for its tag below (the release workflow copies it).
 Write the next version's section here before tagging; the heading must be `## vX.Y.Z`.
 
+## v0.3.2
+
+### Fixes
+
+- Plugins that print their own log lines (for example Kontakt 8's `[…] [error] PresetSlotManager::selectSlot: slot not found …`, once per instance) no longer flood the terminal during `render`, `view` and the other commands. Lines that start with a log timestamp go to `muser-plugin.log` in the temp folder, with one note saying where; muser's own output is unchanged. Set `MUSER_PLUGIN_LOG=show` to see them again (macOS and Linux).
+
 ## v0.3.1
 
 ### Upgrade notes

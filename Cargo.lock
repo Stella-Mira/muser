@@ -975,6 +975,7 @@ dependencies = [
 name = "muser-engine"
 version = "0.3.1"
 dependencies = [
+ "libc",
  "manguebyte",
  "muser-core",
  "objc2",

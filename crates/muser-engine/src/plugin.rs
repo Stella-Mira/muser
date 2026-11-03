@@ -522,6 +522,8 @@ mod imp {
         if let Some(lib) = map.get(&key) {
             return Ok(lib.clone());
         }
+        #[cfg(unix)]
+        crate::plugin_log::install();
         // SAFETY: 加载会执行第三方代码；路径由用户在工程/命令中给出，视为可信的本机插件。
         let library = unsafe { Library::load(path) }.map_err(|e| format!("加载插件 '{path}' 失败: {e:?}"))?;
         map.insert(key, library.clone());
