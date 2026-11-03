@@ -114,6 +114,8 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
     let mut acts: Vec<(usize, Act)> = Vec::new();
     let mut bent = 0usize;
     let sings = track.instrument.trim().to_lowercase().starts_with("choir.");
+    // 0.4 只唱元音（哼唱）：辅音的模拟听起来像另一个声音，默认关；`"@consonants"` 给正数时打开（实验）。
+    let consonants = track.instrument_params.get("@consonants").and_then(serde_json::Value::as_f64).unwrap_or(0.0) > 0.0;
     for (ci, clip) in track.clips.iter().enumerate() {
         // notes 加上 abc、grid、drummer 展开的音符（工程校验时已检查过写法）。
         let all = crate::clip_notes(project, ti, ci).unwrap_or_default();
@@ -190,8 +192,11 @@ fn schedule(project: &Project, ti: usize, cx: &Ctx) -> Vec<(usize, Act)> {
                 // 连奏里紧接着上一个音的音节不发辅音，元音直接滑过去。
                 let tied = clip.legato
                     && notes.iter().any(|m| m.start.0 < note.start.0 - 1e-9 && note.start.0 - (m.start.0 + m.length.0) <= 0.25 + 1e-9);
-                if tied {
+                if tied || !consonants {
                     syl.onset = crate::lyric::Onset::None;
+                }
+                if !consonants && syl.coda == crate::lyric::Coda::Hiss {
+                    syl.coda = crate::lyric::Coda::None;
                 }
                 let lead = ((syl.lead() * sr) as usize).min(on);
                 if syl.voiced_onset() {
@@ -336,7 +341,7 @@ impl LiveInstrument {
             name: track.name.clone(),
             instrument: track.instrument.clone(),
             consonants: sings.then(|| {
-                let gain = track.instrument_params.get("@consonants").and_then(serde_json::Value::as_f64).unwrap_or(1.0);
+                let gain = track.instrument_params.get("@consonants").and_then(serde_json::Value::as_f64).unwrap_or(0.0);
                 crate::lyric::Consonants::new(cx.sr, gain)
             }),
             vowels: Vec::new(),

@@ -1,4 +1,7 @@
-//! 唱音节：`choir.*` 乐器的音符写了 `lyric`（拼音或英文拼法）时，元音换成音节里的元音，起头的辅音模拟出来。
+//! 唱音节：`choir.*` 乐器的音符写了 `lyric`（拼音或英文拼法）时，元音换成音节里的元音（哼唱）。
+//!
+//! 0.4 只唱元音：下面的辅音模拟（噪声叠在人声上）实测听起来像两个声音，默认关，`instrument_params."@consonants"`
+//! 给正数时打开，仅供实验。能听出字的辅音要在 0.5 的合成器里做（共振峰轨迹、协同发音），见 TODO.md。
 //!
 //! 不是真人声：元音是 manguebyte 的共振峰人声（a e i o u 与其间的过渡），辅音在这里用滤波噪声、爆破噪声、
 //! 先哼后开的鼻音和元音滑动做出来，叠在人声上一起走音轨的效果器。像真人一样，辅音提前几十毫秒开始，元音落在拍上。
@@ -207,7 +210,7 @@ pub struct Consonants {
 }
 
 impl Consonants {
-    /// `gain`：辅音音量的倍数（音轨的 `instrument_params."@consonants"`，默认 1）。
+    /// `gain`：辅音音量的倍数（音轨的 `instrument_params."@consonants"`；默认 0，即不发辅音）。
     pub fn new(sample_rate: f64, gain: f64) -> Self {
         Self { bursts: Vec::new(), rng: 0x9E37_79B9_7F4A_7C15, sr: sample_rate as f32, gain: gain.clamp(0.0, 8.0) as f32 }
     }

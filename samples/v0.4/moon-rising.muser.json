@@ -1,0 +1,39 @@
+{
+  "name": "moon-rising",
+  "tempo": 80,
+  "seed": 11,
+  "sections": {
+    "intro": { "bars": 2, "chords": "G" },
+    "a":     { "bars": 4, "chords": "G Em C G" },
+    "b":     { "bars": 4, "chords": "Am C D Em" },
+    "outro": { "bars": 4, "chords": "C G Cm G" }
+  },
+  "form": ["intro", "a", "a", "b", "a", "outro"],
+  "buses": [{ "name": "hall", "effects": [{ "type": "eq", "shape": "highpass", "frequency": 220 }, { "type": "reverb", "mix": 1.0, "decay_seconds": 2.8 }] }],
+  "master_effects": [{ "type": "compressor", "threshold_db": -18, "ratio": 2 }, { "type": "limiter", "ceiling_db": -1 }],
+  "tracks": [
+    { "name": "voice", "instrument": "choir.solo", "gain_db": 1, "sends": { "hall": -9 },
+      "instrument_params": { "vibrato_depth": 22, "breathiness": 0.22 },
+      "humanize": { "timing_ms": 12, "drift": 0.4, "velocity": 0.05 },
+      "parts": {
+        "a":   { "legato": true, "abc": "L:1/8\nK:G\nB2 B2 A2 G2 | A4 E4 | G2 A2 B2 d2 | B8 |\nw: yue liang sheng qi | lai le | feng chui guo shan | gang" },
+        "a#2": { "legato": true, "abc": "L:1/8\nK:G\nd2 d2 B2 G2 | A4 B4 | c2 B2 A2 F2 | G8 |\nw: xing xing deng shang | tian kong | zhao zhe hui jia | lu" },
+        "b":   { "legato": true, "abc": "L:1/8\nK:G\nE2 G2 A2 B2 | c4 B4 | A2 G2 E2 D2 | E8 |\nw: wo zai deng ni | ni zai | na li ni zai | na" },
+        "outro": { "legato": true, "abc": "L:1/8\nK:G\nG4 A4 | B8 | c4 B4 | G8 |\nw: u _ | u | a _ | u" }
+      } },
+    { "name": "guitar", "instrument": "guitar.nylon", "gain_db": -6, "pan": -0.25, "sends": { "hall": -14 },
+      "humanize": { "timing_ms": 8, "velocity": 0.08 },
+      "parts": { "*": { "chordal": "1 5 8 5 3' 5 8 5", "octave": 3 } } },
+    { "name": "bass", "instrument": "bass.finger", "gain_db": -6,
+      "parts": { "a": { "chordal": "1 - - - 5 - - -", "octave": 2 }, "b": { "chordal": "1 - - - 5 - - -", "octave": 2 },
+                 "outro": { "chordal": "1 - - - - - - -", "octave": 2 } } },
+    { "name": "strings", "instrument": "strings.ensemble", "gain_db": -5, "pan": 0.2, "sends": { "hall": -8 },
+      "parts": { "a#2": { "chordal": "c - - -", "step": 1, "octave": 3, "velocity": 0.4 },
+                 "b": { "chordal": "c - - -", "step": 1, "octave": 3, "velocity": 0.5 },
+                 "a#3": { "chordal": "c - - -", "step": 1, "octave": 3, "velocity": 0.45 },
+                 "outro": { "chordal": "c - - -", "step": 1, "octave": 3, "velocity": 0.35 } } },
+    { "name": "hum", "instrument": "choir.ooh", "gain_db": -19, "sends": { "hall": -6 },
+      "parts": { "b": { "chordal": "c - - -", "step": 1, "octave": 5, "velocity": 0.35 },
+                 "outro": { "chordal": "c - - -", "step": 1, "octave": 5, "velocity": 0.3 } } }
+  ]
+}
