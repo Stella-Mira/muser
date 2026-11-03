@@ -174,6 +174,10 @@
     -webkit-background-clip: text; background-clip: text; }
   #kara-now span.done { color: var(--accent); }
   #kara-now span.now { color: transparent; }
+  .cut-button { margin-right: 10px; padding: 4px 10px; }
+  .cut-button[aria-pressed="true"] { background: #ffc46b; border-color: #ffc46b; color: #1a1205; }
+  canvas.track-notes.cutting { cursor: crosshair; }
+  canvas.track-notes.over-audio { cursor: grab; }
   .kara-toggle { display: inline-flex; align-items: center; gap: 4px; margin-right: 10px; cursor: pointer; }
   .rec input, .rec select { background: #0b0e16; color: var(--text, #dfe6f5); border: 1px solid #2a3043; border-radius: 6px; padding: 3px 6px; font: inherit; }
   #rec-btn.recording { background: #ff5d6c; border-color: #ff5d6c; }
@@ -358,6 +362,7 @@
       </div>
       <div class="transport-options">
         <label class="hint kara-toggle"><input type="checkbox" id="kara-on" checked> <span data-i18n="karaoke">Lyrics</span></label>
+        <button id="cut-mode" class="cut-button" data-title="cutHint" aria-pressed="false">✂</button>
         <div class="loop-control">
           <label class="inline"><input type="checkbox" id="loop"> <span data-i18n="loop">Loop</span></label>
           <span id="loop-range" class="loop-range">Full song</span>
@@ -478,7 +483,8 @@ const I18N = {
     gainChange: (v) => `gain_db → ${v}`, muteChange: (v) => `muted → ${v}`,
     bypassChange: (b) => `bypass → [${b.map((x) => (x ? "off" : "on")).join(", ")}]`, fxBypassed: "bypassed (click to turn on)", fxActive: "on (click to bypass)",
     export: "Export", exportNote: "Current mix, including page changes", exportWav: "Mix (WAV)", exportMidi: "MIDI",
-    karaoke: "Lyrics", recTitle: "Record a voice", recNote: "Wear headphones", recTrack: "Track", recCountIn: "Count-in bars", recNudge: "Latency (ms)",
+    karaoke: "Lyrics", cutHint: "Scissors: click an audio clip to cut it there (C). Drag an audio clip to move it (Shift snaps to 1/16 notes); click one to select it, then ← → nudge it 10 ms (Shift: 1/16 note)",
+    recTitle: "Record a voice", recNote: "Wear headphones", recTrack: "Track", recCountIn: "Count-in bars", recNudge: "Latency (ms)",
     recStart: "● Record from the playhead", recLoop: "● Record the loop range", recStop: "■ Stop recording",
     recHelp: "Records from the playhead, or only the loop range when one is set. Each take is saved in recordings/; Save writes the chosen ones into the project.",
     recCounting: "Count-in…", recRecording: "Recording… sing along", recUploading: "Saving the take…", recSaved: (f) => `Saved ${f}; press Save to keep it in the project`,
@@ -534,7 +540,8 @@ const I18N = {
     gainChange: (v) => `gain_db → ${v}`, muteChange: (v) => `muted → ${v}`,
     bypassChange: (b) => `效果器 → [${b.map((x) => (x ? "旁通" : "开")).join("，")}]`, fxBypassed: "已旁通（点一下打开）", fxActive: "开着（点一下旁通）",
     export: "导出", exportNote: "当前混音，含页面上的改动", exportWav: "整首混音（WAV）", exportMidi: "MIDI",
-    karaoke: "歌词", recTitle: "录人声", recNote: "请戴耳机", recTrack: "轨名", recCountIn: "预备小节", recNudge: "延迟微调（毫秒）",
+    karaoke: "歌词", cutHint: "剪刀：点音频片段，在那里剪开（快捷键 C）。拖动音频片段挪位置（按住 Shift 对齐 1/16 音符）；点一下选中，再按 ← → 每次微调 10 毫秒（Shift：1/16 音符）",
+    recTitle: "录人声", recNote: "请戴耳机", recTrack: "轨名", recCountIn: "预备小节", recNudge: "延迟微调（毫秒）",
     recStart: "● 从播放头开始录", recLoop: "● 录循环区间", recStop: "■ 停止录音",
     recHelp: "从播放头开始录；设了循环区间就只录那一段。每一遍都存在 recordings/ 里，点「保存」才把选定的那遍写进工程。",
     recCounting: "预备拍……", recRecording: "正在录，跟着唱", recUploading: "正在存这一遍……", recSaved: (f) => `已存 ${f}；满意就点「保存」写进工程`,
@@ -802,7 +809,7 @@ async function refresh() {
   if (!first && st.version === data.version && st.version === version) {
     // 同一版本还在渲染：只补上波形与电平。
     data.peaks = st.peaks; data.meters = st.meters; data.rendered = st.rendered; data.render_seconds = st.render_seconds;
-    data.takes = st.takes; data.takes_pending = st.takes_pending; data.changes = st.changes; data.lyrics = st.lyrics;
+    data.takes = st.takes; data.takes_pending = st.takes_pending; data.changes = st.changes; data.lyrics = st.lyrics; data.clip_edits = st.clip_edits;
     decodeMeters(); renderHeader(); renderChanges(); drawTimeline();
     return;
   }
@@ -1106,6 +1113,7 @@ function channelItem(n, number, isChanged) {
   const lane = item.querySelector("canvas.track-notes");
   lane.dataset.id = n.id;
   lane.addEventListener("click", seekFromCanvas);
+  bindClipEditing(lane, n);
   item.querySelector(".chain-cell").appendChild(chainView(n.chain, n.output, n.sends, n.id));
   bindGain(item, n);
   bindMuteSolo(item, n);
@@ -1345,11 +1353,11 @@ function renderFlow() {
   }
 }
 function renderChanges() {
-  const list = data.changes, pending = data.takes_pending || [];
-  const any = list.length + pending.length > 0;
+  const list = data.changes, pending = data.takes_pending || [], edits = data.clip_edits || [];
+  const any = list.length + pending.length + edits.length > 0;
   $("changes-empty").hidden = any; $("changes").hidden = !any;
   const name = (id) => (data.nodes.find((n) => n.id === id) || {}).name || id;
-  $("changes").textContent = pending.map((tk) => t("takePending", tk.file.split("/").pop(), barOf(tk.start))).concat(list.map((c) => {
+  $("changes").textContent = pending.map((tk) => t("takePending", tk.file.split("/").pop(), barOf(tk.start))).concat(edits, list.map((c) => {
     const parts = [];
     if ("gain_db" in c) parts.push(t("gainChange", c.gain_db));
     if ("muted" in c) parts.push(t("muteChange", c.muted));
@@ -1358,6 +1366,62 @@ function renderChanges() {
   })).join("\n");
   $("save").disabled = $("reset").disabled = !any;
   renderTakes();
+}
+
+// ---------- 音频片段：剪刀剪开、拖动挪位置 ----------
+let cutting = false, selectedClip = null;   // { id: "tracks[5]", clip: 2 }：点一下选中，← → 微调
+function setCutting(on) {
+  cutting = on; $("cut-mode").setAttribute("aria-pressed", on ? "true" : "false");
+  document.querySelectorAll("canvas.track-notes").forEach((c) => c.classList.toggle("cutting", on));
+}
+$("cut-mode").onclick = () => setCutting(!cutting);
+document.addEventListener("keydown", (e) => {
+  if (e.target.closest("input, select, textarea")) return;
+  if (e.key === "c" || e.key === "C") setCutting(!cutting);
+  if (e.key === "Escape") { setCutting(false); selectedClip = null; drawTrackLanes(); }
+  if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && selectedClip) {
+    e.preventDefault();
+    const n = data.nodes.find((x) => x.id === selectedClip.id), c = n && n.clips[selectedClip.clip];
+    if (!c) return;
+    // 每次 10 毫秒；按住 Shift 一次 1/16 音符。
+    const step = e.shiftKey ? 0.25 : 0.01 * data.tempo / 60, to = Math.max(0, c.start + (e.key === "ArrowLeft" ? -step : step));
+    c.start = to; drawTrackLanes();   // 先在页面上挪，连按时不等服务器
+    post("/api/clip", { track: +/\d+/.exec(n.id)[0], clip: selectedClip.clip, start: to }).then(refresh).catch(() => {});
+  }
+});
+function bindClipEditing(lane, n) {
+  const beatAt = (e) => { const r = lane.getBoundingClientRect(); return Math.max(0, e.clientX - r.left) / Math.max(1, r.width) * (total / sr) * data.tempo / 60; };
+  const clipAt = (beat) => (n.clips || []).findIndex((c) => c.audio && beat >= c.start && beat < c.start + c.length);
+  const trackIndex = +/\d+/.exec(n.id)[0];
+  lane.addEventListener("pointermove", (e) => { if (!lane.dataset.drag) lane.classList.toggle("over-audio", !cutting && clipAt(beatAt(e)) >= 0); });
+  lane.addEventListener("pointerdown", (e) => {
+    const beat = beatAt(e), ci = clipAt(beat);
+    if (ci < 0 || e.button !== 0) return;
+    if (cutting) {
+      suppressTimelineClickUntil = performance.now() + 400;
+      post("/api/clip", { track: trackIndex, clip: ci, split: beat }).then(refresh).catch(() => {});
+      return;
+    }
+    const clip = n.clips[ci], from = clip.start, grab = beat - clip.start, x0 = e.clientX;
+    let moved = false;
+    lane.setPointerCapture(e.pointerId); lane.dataset.drag = "1";
+    const move = (ev) => {
+      if (!moved && Math.abs(ev.clientX - x0) < 4) return;
+      moved = true;
+      let to = Math.max(0, beatAt(ev) - grab);
+      if (ev.shiftKey) to = Math.round(to * 4) / 4;
+      clip.start = to; drawTrackLanes();
+    };
+    const up = () => {
+      lane.removeEventListener("pointermove", move); lane.removeEventListener("pointerup", up); delete lane.dataset.drag;
+      selectedClip = { id: n.id, clip: ci }; drawTrackLanes();
+      if (!moved) return;
+      suppressTimelineClickUntil = performance.now() + 400;
+      const to = clip.start; clip.start = from;
+      post("/api/clip", { track: trackIndex, clip: ci, start: to }).then(refresh).catch(() => { drawTrackLanes(); });
+    };
+    lane.addEventListener("pointermove", move); lane.addEventListener("pointerup", up);
+  });
 }
 
 // ---------- 录人声 ----------
@@ -1551,6 +1615,9 @@ function drawTrackLanes() {
         g.font = "600 9px system-ui"; g.textBaseline = "top";
         g.fillStyle = "rgba(8,10,16,.6)"; g.fillRect(x0 + 1, 6, g.measureText(c.audio).width + 6, 12);
         g.fillStyle = "rgba(255,255,255,.85)"; g.fillText(c.audio, x0 + 4, 8); g.restore(); g.fillStyle = colors[1];
+      }
+      if (selectedClip && selectedClip.id === t.id && t.clips[selectedClip.clip] === c) {
+        g.save(); g.strokeStyle = "#ffc46b"; g.lineWidth = 2; g.strokeRect(x0 + 1, 4, Math.max(2, x1 - x0 - 2), H - 8); g.restore();
       }
       for (const n of c.notes) {
         if (n[0] >= c.length) continue;

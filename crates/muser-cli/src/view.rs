@@ -452,6 +452,9 @@ struct State {
     working: Option<Project>,
     /// 录好、贴到工作副本里还没保存的录音（保存时写进工程文件）。
     takes: Vec<crate::takes::Take>,
+    /// 页面上剪开 / 挪动过片段的音频轨（按轨名，保存时整条轨的 clips 写回），与给人看的说明。
+    clip_dirty: BTreeSet<String>,
+    clip_edits: Vec<String>,
     solo: BTreeSet<String>,
     /// 有新的渲染请求（渲染线程处理后清除）。
     requested: bool,
@@ -582,10 +585,12 @@ impl Shared {
                     (Some(f), Some(w)) => !diff(f, w).is_empty(),
                     _ => false,
                 };
-                if had_changes || !st.takes.is_empty() {
+                if had_changes || !st.takes.is_empty() || !st.clip_edits.is_empty() {
                     eprintln!("[view] 工程文件已变化，丢弃页面上未保存的改动（录音文件还在 recordings/ 里，可以再贴上）");
                 }
                 st.takes.clear();
+                st.clip_dirty.clear();
+                st.clip_edits.clear();
                 // 结构变了（音轨/总线增删）时，独奏可能指向别的节点：清空。
                 let same_shape = st.file.as_ref().is_some_and(|f| f.tracks.len() == p.tracks.len() && f.buses.len() == p.buses.len());
                 if !same_shape {
@@ -759,10 +764,17 @@ impl Shared {
         let mut st = self.state.lock().unwrap();
         let (Some(file), Some(working)) = (&st.file, &st.working) else { return Err("工程尚未成功加载".into()) };
         let changes = diff(file, working);
-        if changes.is_empty() && st.takes.is_empty() {
+        if changes.is_empty() && st.takes.is_empty() && st.clip_dirty.is_empty() {
             return Ok(0);
         }
         let takes = st.takes.clone();
+        // 剪开 / 挪动过的音频轨：整条轨的片段照工作副本写回。
+        let edited: Vec<(String, Value)> = st
+            .clip_dirty
+            .iter()
+            .filter_map(|n| working.tracks.iter().find(|t| &t.name == n).map(|t| (n.clone(), serde_json::to_value(&t.clips).unwrap_or(Value::Null))))
+            .collect();
+        let n_edits = st.clip_edits.len();
         let write = || -> Result<()> {
             let text = std::fs::read_to_string(&self.path)?;
             let mut v: Value = serde_json::from_str(&text)?;
@@ -770,16 +782,27 @@ impl Shared {
             for t in &takes {
                 crate::takes::place_json(&mut v, t, working.tempo)?;
             }
+            for (name, clips) in &edited {
+                let t = v
+                    .get_mut("tracks")
+                    .and_then(Value::as_array_mut)
+                    .and_then(|a| a.iter_mut().find(|t| t.get("name").and_then(Value::as_str) == Some(name.as_str())))
+                    .ok_or_else(|| anyhow!("工程文件里没有音轨 '{name}'"))?;
+                t["clips"] = clips.clone();
+            }
             std::fs::write(&self.path, serde_json::to_string_pretty(&v)? + "\n")?;
             Ok(())
         };
         write().map_err(|e| format!("保存失败: {e:#}"))?;
         st.file = st.working.clone();
         st.takes.clear();
+        st.clip_dirty.clear();
+        st.clip_edits.clear();
         // 自己写的文件不触发重新加载。
         st.file_mtime = mtime(&self.path);
-        eprintln!("[view] 已保存 {} 项改动到 {}", changes.len() + takes.len(), self.path.display());
-        Ok(changes.len() + takes.len())
+        let n = changes.len() + takes.len() + n_edits;
+        eprintln!("[view] 已保存 {n} 项改动到 {}", self.path.display());
+        Ok(n)
     }
 
     /// 可选的音色：内置乐器与 `$MUSER_SFZ_PATH` 里的 SFZ（直接换）、扫描到的 VST3 / CLAP 乐器插件（在插件窗口里选）。
@@ -1147,6 +1170,56 @@ impl Shared {
         Ok(())
     }
 
+    /// 剪开或挪动音频轨上的一个片段（待保存）：`split` 在第几拍剪成两段，`start` 把片段挪到第几拍。
+    fn edit_clip(&self, body: &Value) -> Result<(), String> {
+        let num = |k: &str| body.get(k).and_then(Value::as_f64);
+        let ti = num("track").ok_or("缺 track")? as usize;
+        let ci = num("clip").ok_or("缺 clip")? as usize;
+        let mut st = self.state.lock().unwrap();
+        let working = st.working.as_mut().ok_or("工程尚未成功加载")?;
+        let spb = 60.0 / working.tempo;
+        let map = working.bar_map();
+        let t = working.tracks.get_mut(ti).ok_or("没有这条音轨")?;
+        if t.instrument.trim() != muser_core::audio::INSTRUMENT || !t.parts.is_empty() {
+            return Err("只能剪开、挪动音频轨上的片段".into());
+        }
+        let c = t.clips.get(ci).cloned().ok_or("没有这个片段")?;
+        let audio = c.audio.clone().ok_or("这个片段不是音频")?;
+        let bar = |b: f64| { let (k, into) = map.bar_at(b); format!("第 {} 小节第 {:.2} 拍", k + 1, into + 1.0) };
+        let what = if let Some(at) = num("split") {
+            let (a, z) = (c.start.0, c.start.0 + c.length.0);
+            if !(at > a + 0.01 && at < z - 0.01) {
+                return Err("剪刀要落在片段中间".into());
+            }
+            let mut left = c.clone();
+            let mut right = c.clone();
+            left.length = muser_core::Beats(at - a);
+            right.start = muser_core::Beats(at);
+            right.length = muser_core::Beats(z - at);
+            let (mut la, mut ra) = (audio.clone(), audio.clone());
+            la.fade_out = 0.01;
+            ra.fade_in = 0.01;
+            ra.offset = audio.offset + (at - a) * spb;
+            left.audio = Some(la);
+            right.audio = Some(ra);
+            t.clips[ci] = left;
+            t.clips.insert(ci + 1, right);
+            format!("✂ {}：在{}剪开", t.name, bar(at))
+        } else if let Some(to) = num("start") {
+            let to = to.max(0.0);
+            t.clips[ci].start = muser_core::Beats(to);
+            t.clips.sort_by(|x, y| x.start.0.total_cmp(&y.start.0));
+            format!("↔ {}：片段从{}挪到{}（{:+.0} 毫秒）", t.name, bar(c.start.0), bar(to), (to - c.start.0) * spb * 1000.0)
+        } else {
+            return Err("要 split 或 start".into());
+        };
+        let name = t.name.clone();
+        st.clip_dirty.insert(name);
+        st.clip_edits.push(what);
+        self.request_render(&mut st);
+        Ok(())
+    }
+
     /// 删掉一遍。只是贴在工作副本里（还没保存）的，连那个片段一起拿掉；已经保存进工程的不删。
     fn delete_take(&self, file: &str) -> Result<(), String> {
         let mut st = self.state.lock().unwrap();
@@ -1171,6 +1244,8 @@ impl Shared {
         let mut st = self.state.lock().unwrap();
         st.working = st.file.clone();
         st.takes.clear();
+        st.clip_dirty.clear();
+        st.clip_edits.clear();
         st.solo.clear();
         self.request_render(&mut st);
     }
@@ -1222,6 +1297,7 @@ impl Shared {
         }
         out["changes"] = json!(changes);
         out["takes_pending"] = json!(st.takes);
+        out["clip_edits"] = json!(st.clip_edits);
         let used = |p: &Option<Project>, f: &str| p.as_ref().is_some_and(|w| crate::takes::referenced(w, f));
         out["takes"] = json!(crate::takes::list(&self.path)
             .iter()
@@ -1437,6 +1513,10 @@ fn handle(shared: &Arc<Shared>, mut req: tiny_http::Request, port: u16) {
                 Err(e) => respond_json(req, 400, &json!({ "error": e })),
             }
         }
+        (Method::Post, "/api/clip") => match read_body::<Value>(&mut req).and_then(|b| shared.edit_clip(&b)) {
+            Ok(()) => respond_json(req, 200, &json!({ "ok": true })),
+            Err(e) => respond_json(req, 400, &json!({ "error": e })),
+        },
         (Method::Post, "/api/takes/use" | "/api/takes/delete") => {
             let body = read_body::<Value>(&mut req);
             let file = body.as_ref().ok().and_then(|b| b.get("file")).and_then(Value::as_str).unwrap_or_default().to_string();
@@ -1507,6 +1587,8 @@ pub fn serve(path: &str, settings: RenderSettings, port: u16, open: bool, device
             working: None,
             solo: BTreeSet::new(),
             takes: Vec::new(),
+            clip_dirty: BTreeSet::new(),
+            clip_edits: Vec::new(),
             requested: false,
             rendering: false,
             version: 0,
