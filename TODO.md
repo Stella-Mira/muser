@@ -27,11 +27,13 @@
 
 10. **Agent 现场演奏（`muser live`）**——见下。
 
-## 0.5 · 主线：muser 自己的官方合成器 + 用文字描述组装乐器
+## 0.5 · 主线：yinse（音色）——muser 自己的合成器，给 AI 用
 
-### muser 官方合成器（和 poly 不同）
+名字：**yinse**，中文"音色"，字面是"声音的颜色"（德语 Klangfarbe 同义）。借助 manguebyte 的底层，全新搭建，不是 poly 的变体。
 
-poly 是一台经典的减法 / FM / 波表合成器，参数是工程师的参数（振荡器、滤波器、调制矩阵）。官方合成器从"agent 能说清楚的东西"出发：
+### 引擎（和 poly 不同）
+
+poly 是一台经典的减法 / FM / 波表合成器，参数是工程师的参数（振荡器、滤波器、调制矩阵）。yinse 从"agent 能说清楚的东西"出发：
 声音由**形状**和**频谱**决定，参数本身就是可感知、可测量的量。用 manguebyte-dsp 的积木在 muser 里实现（不是改 poly）：
 
 - **形状波表**：`Wavetable::new(frames)` 能把任意单周期波形做成防混叠的波表，所以波形可以来自
@@ -43,28 +45,28 @@ poly 是一台经典的减法 / FM / 波表合成器，参数是工程师的参�
   被另一振荡器 FM / AM / 环形调制；同一张表出更多声音。
 - **曲线形状的 LFO / 包络**：agent 写几个点（或用几种命名的形状）就是一条 LFO / 包络，也能当步进序列用。
 - **颗粒 / 噪声层**、滤波、包络；效果链复用现有效果器。
-- **三层结构**（官方合成器与 `muser.design` 是同一件事的两层）：
+- **三层结构**（引擎和描述词是同一件事的上下两层）：
   1. 声音材料：确定的生成器把形状 / 频谱 / 图片变成波表帧和泛音表；
-  2. 引擎：官方合成器演奏这些材料（warp、滤波、曲线 LFO / 包络、颗粒）；
-  3. 描述词：`muser.design` 把"温暖 3.4、颗粒感 4.1"翻译成第 1、2 层的参数（亮 = 频谱倾斜、空心 = 奇偶泛音比、
+  2. 引擎：yinse 演奏这些材料（warp、滤波、曲线 LFO / 包络、颗粒）；
+  3. 描述词：yinse 的参数块把"温暖 3.4、颗粒感 4.1"翻译成第 1、2 层的参数（亮 = 频谱倾斜、空心 = 奇偶泛音比、
      颗粒 = 噪声 / 不谐和、动态感 = 波表位置扫动……），组装后测量回报。
 - **先行的一小步（可放进 0.4）**：让 poly 的 wavetable 振荡器接受自定义波表（谐波表 / 公式 / 控制点生成），poly 立刻能用上形状波表；
-  官方合成器再在此基础上做完整的引擎。
-- 参数尽量就是描述词本身（`bright`、`warm`、`grain`、`inharmonic`、`hollow`……），`muser.design` 的合成类 group 以它为主引擎，poly 作为补充。
+  yinse 再在此基础上做完整的引擎。
+- 参数尽量就是描述词本身（`bright`、`warm`、`grain`、`inharmonic`、`hollow`……），合成类 group 由 yinse 引擎演奏，poly 作为补充。
 - 验收：几种形状 / 频谱各有示例；同样参数结果确定；`sounds describe` 测得的亮度、颗粒感等随参数单调变化。
 
-### 用文字描述组装乐器（`muser.design`）
+### 用文字描述组装音色（`"instrument": "yinse"`）
 
 agent 用能理解的描述词（0–10 刻度，中英文名都认）说出想要的音色，muser 组装出一个乐器，并量出实际效果回报给 agent。
 
 ```json
-"instrument": "muser.design",
-"design": { "group": "pad", "warm": 3.4, "bright": 6, "grain": 4.1, "attack": 1, "sustain": 3, "release": 5,
+"instrument": "yinse",
+"yinse": { "group": "pad", "warm": 3.4, "bright": 6, "grain": 4.1, "attack": 1, "sustain": 3, "release": 5,
             "width": 4, "movement": 2, "body": 6, "space": 3, "based_on": "poly.glass_pluck", "seed": 7 }
 ```
 
 - **group 选引擎**：
-  - 合成类（pad / lead / bass / pluck / keys / bell / organ）→ 官方合成器为主，需要时组装 poly 音色；
+  - 合成类（pad / lead / bass / pluck / keys / bell / organ）→ yinse 引擎为主，需要时组装 poly 音色；
   - 原声类（strings / wind / guitar / mallet）→ 现有的物理建模乐器，描述词翻译成它们的参数；
   - 钢琴（piano）→ 用 SFZ 音色库（muser 自己没有原声钢琴模型；自建钢琴模型放到以后）。
 - **描述词都要能测**：每个词对应 `sounds describe` / `audition` 能量出来的量（亮度 = 频谱重心、温暖 = 中低频比重与高次谐波衰减、
