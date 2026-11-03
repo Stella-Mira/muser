@@ -644,10 +644,14 @@ pub fn available() -> Vec<String> {
 /// 不实例化乐器、不加载插件或采样，检查乐器名与 `instrument_params`。
 /// `plugin:` 只检查语法；`sfz:` 检查文件存在。
 /// `@label`（给人和 agent 看的音色名，见 muser view 的音色面板）对任何乐器都只是注释。
+/// 去掉 muser 自己用、乐器不认识的键：`@label`（显示名）、`@consonants`（唱音节时辅音的音量，见 lyric.rs）。
 fn without_label(params: &InstrumentParams) -> std::borrow::Cow<'_, InstrumentParams> {
-    if params.contains_key("@label") {
+    const OURS: [&str; 2] = ["@label", "@consonants"];
+    if OURS.iter().any(|k| params.contains_key(*k)) {
         let mut p = params.clone();
-        p.remove("@label");
+        OURS.iter().for_each(|k| {
+            p.remove(*k);
+        });
         std::borrow::Cow::Owned(p)
     } else {
         std::borrow::Cow::Borrowed(params)

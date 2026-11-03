@@ -335,7 +335,10 @@ impl LiveInstrument {
             taps: Vec::new(),
             name: track.name.clone(),
             instrument: track.instrument.clone(),
-            consonants: sings.then(|| crate::lyric::Consonants::new(cx.sr)),
+            consonants: sings.then(|| {
+                let gain = track.instrument_params.get("@consonants").and_then(serde_json::Value::as_f64).unwrap_or(1.0);
+                crate::lyric::Consonants::new(cx.sr, gain)
+            }),
             vowels: Vec::new(),
         })
     }

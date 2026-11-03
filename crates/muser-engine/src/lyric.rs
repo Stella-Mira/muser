@@ -137,9 +137,9 @@ impl Syl {
     pub fn lead(&self) -> f64 {
         match self.onset {
             Onset::None => 0.0,
-            Onset::Fricative { level, .. } => if level < 0.3 { 0.06 } else { 0.09 },
-            Onset::Plosive { aspirated, .. } => if aspirated { 0.035 } else { 0.015 },
-            Onset::Affricate { .. } => 0.07,
+            Onset::Fricative { level, .. } => if level < 0.3 { 0.08 } else { 0.12 },
+            Onset::Plosive { aspirated, .. } => if aspirated { 0.05 } else { 0.02 },
+            Onset::Affricate { .. } => 0.09,
             Onset::Nasal => 0.07,
             Onset::Glide { .. } => 0.05,
         }
@@ -203,26 +203,28 @@ pub struct Consonants {
     bursts: Vec<Burst>,
     rng: u64,
     sr: f32,
+    gain: f32,
 }
 
 impl Consonants {
-    pub fn new(sample_rate: f64) -> Self {
-        Self { bursts: Vec::new(), rng: 0x9E37_79B9_7F4A_7C15, sr: sample_rate as f32 }
+    /// `gain`：辅音音量的倍数（音轨的 `instrument_params."@consonants"`，默认 1）。
+    pub fn new(sample_rate: f64, gain: f64) -> Self {
+        Self { bursts: Vec::new(), rng: 0x9E37_79B9_7F4A_7C15, sr: sample_rate as f32, gain: gain.clamp(0.0, 8.0) as f32 }
     }
 
     /// 音节 `syl` 在 `start` 帧开始（元音在 `start + lead` 帧）、音符长 `len` 帧、力度 `velocity`：排好它的辅音。
     pub fn sing(&mut self, syl: &Syl, start: usize, lead: usize, len: usize, velocity: f32) {
         let ms = |x: f32| (x * 0.001 * self.sr) as usize;
         // 辅音比元音轻得多（摩擦音约低 12 dB，爆破只是一下）：整体按校准后的人声音量缩小。
-        let v = CONSONANT_GAIN * (0.35 + 0.65 * velocity.clamp(0.0, 1.0));
+        let v = self.gain * CONSONANT_GAIN * (0.35 + 0.65 * velocity.clamp(0.0, 1.0));
         let mut push = |start: usize, len: usize, hz: f32, q: f32, level: f32, attack: usize, release: usize, sr: f32| {
             self.bursts.push(Burst { start, len: len.max(1), level: level * v, attack: attack.max(1), release: release.max(1), biquad: Biquad::bandpass(hz, q, sr) });
         };
         let sr = self.sr;
         match syl.onset {
-            Onset::Fricative { hz, q, level } => push(start, lead + ms(25.0), hz, q, level, ms(18.0), ms(30.0), sr),
+            Onset::Fricative { hz, q, level } => push(start, lead + ms(30.0), hz, q, level, ms(20.0), ms(35.0), sr),
             Onset::Plosive { hz, aspirated } => {
-                push(start, ms(9.0), hz, 1.0, if aspirated { 0.9 } else { 0.55 }, ms(1.0), ms(6.0), sr);
+                push(start, ms(14.0), hz, 1.0, if aspirated { 0.9 } else { 0.55 }, ms(1.0), ms(9.0), sr);
                 if aspirated {
                     push(start + ms(6.0), lead.saturating_sub(ms(6.0)) + ms(15.0), 1600.0, 0.5, 0.28, ms(5.0), ms(20.0), sr);
                 }
@@ -329,7 +331,7 @@ mod tests {
 
     #[test]
     fn consonants_add_band_limited_noise_then_stop() {
-        let mut c = Consonants::new(48_000.0);
+        let mut c = Consonants::new(48_000.0, 1.0);
         c.sing(&parse("sa"), 100, 4320, 24_000, 0.8);
         let mut block = manguebyte::prelude::AudioBuffer::<f32>::new(2, 8192);
         c.add_to(&mut block, 0);
