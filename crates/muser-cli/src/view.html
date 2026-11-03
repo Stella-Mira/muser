@@ -1386,9 +1386,24 @@ function drawTrackLanes() {
     // 波形按整轨最响处归一（同一轨内的相对大小不变）。
     let wmax = 0;
     for (const c of t.clips) for (const v of c.wave || []) wmax = Math.max(wmax, v);
+    // part 展开的块：同一个 part（如 verse、verse#2、*）同一种底色、圆角，块上写 part 名（像 FL Studio 的 pattern）。
+    const partKeys = [...new Set((t.parts || []).map((p) => p.key))];
+    const partTint = ["rgba(255,255,255,0)", "rgba(255,255,255,.10)", "rgba(0,0,0,.22)", "rgba(255,255,255,.18)", "rgba(0,0,0,.36)"];
     for (const c of t.clips) {
       const x0 = x(c.start), x1 = x(c.start + c.length);
-      g.fillStyle = colors[0]; g.fillRect(x0, 5, Math.max(1, x1 - x0 - 1), H - 10);
+      const part = (t.parts || []).find((p) => Math.abs(p.start - c.start) < 1e-6);
+      g.fillStyle = colors[0];
+      if (part) {
+        const k = partKeys.indexOf(part.key), w = Math.max(1, x1 - x0 - 2);
+        g.beginPath(); g.roundRect(x0 + 1, 5, w, H - 10, Math.min(5, w / 2)); g.fill();
+        g.fillStyle = partTint[k % partTint.length]; g.fill();
+        if (partKeys.length > 1 && w > 26) {
+          g.save(); g.clip(); g.font = "600 9px system-ui"; g.textBaseline = "top"; g.fillStyle = "rgba(255,255,255,.55)";
+          g.fillText(part.key, x0 + 5, 7); g.restore();
+        }
+      } else {
+        g.fillRect(x0, 5, Math.max(1, x1 - x0 - 1), H - 10);
+      }
       g.fillStyle = colors[1];
       if (c.wave && c.wave.length) {
         // 音频 clip：以中线为轴的波形，覆盖文件实际播放的部分。
@@ -1410,11 +1425,7 @@ function drawTrackLanes() {
         g.fillRect(nx, 8 + (1 - (n[2] - lo) / span) * (H - 18), nw, 2);
       }
     }
-    // 循环的分界：part 每重复一遍的起点，短虚线（太密时不画）。
-    if ((t.loops || []).length > 1 && x(t.loops[1]) - x(t.loops[0]) >= 4) {
-      g.fillStyle = "rgba(255,255,255,.28)";
-      for (const b of t.loops) { const lx = Math.round(x(b)); for (let y = 6; y < H - 6; y += 6) g.fillRect(lx, y, 1, 3); }
-    }
+
     g.globalAlpha = 1;
     drawLoopRange(g, W, H, false);
     drawPlayhead(g, position() / Math.max(1, total) * W, H);

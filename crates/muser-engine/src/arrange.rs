@@ -129,46 +129,26 @@ pub fn arranged(project: &Project) -> Result<Cow<'_, Project>, String> {
     Ok(Cow::Owned(out))
 }
 
-/// 每条音轨的 part 每重复一遍从哪里开始（拍），给 `muser view` 画循环的分界。
-/// 循环长度：`length`，没写时 chordal 是音型长度，grid 是行长（各行一样长时）；内容就是整段的 part 不算。
-/// `"align": "global"` 的从第 0 拍数起，其余从段落开头数起。
-pub fn loop_starts(project: &Project) -> Vec<Vec<f64>> {
+/// 每条音轨里由 part 展开出来的块：每个段落一块，记着用的是哪个 part（`verse`、`verse#2`、`*`）。
+/// `muser view` 按它画圆角块，同一个 part 同一种底色（像 FL Studio 的 pattern）。
+pub fn part_blocks(project: &Project) -> Vec<Vec<(f64, f64, String)>> {
     let spans = timeline(project).unwrap_or_default();
     project
         .tracks
         .iter()
         .map(|t| {
-            let mut out = Vec::new();
-            for (entry, span) in project.form.iter().zip(&spans) {
-                if t.parts.is_empty() || entry.muted(&t.name) {
-                    continue;
-                }
-                let Some(part) = arrange::pick(&t.parts, &span.name, span.occurrence) else { continue };
-                let Some(len) = loop_len(part).filter(|&l| l > 1e-3 && l < span.length - 1e-9) else { continue };
-                let origin = if part.align == muser_core::arrange::Align::Global { 0.0 } else { span.start };
-                let mut b = origin + ((span.start - origin) / len).ceil() * len;
-                while b < span.start + span.length - 1e-9 && out.len() < 20_000 {
-                    if b > span.start + 1e-9 {
-                        out.push(b);
-                    }
-                    b += len;
-                }
-            }
-            out
+            project
+                .form
+                .iter()
+                .zip(&spans)
+                .filter(|(entry, _)| !t.parts.is_empty() && !entry.muted(&t.name))
+                .filter_map(|(_, span)| {
+                    let key = [format!("{}#{}", span.name, span.occurrence), span.name.clone(), "*".into()].into_iter().find(|k| t.parts.contains_key(k))?;
+                    Some((span.start, span.length, key))
+                })
+                .collect()
         })
         .collect()
-}
-
-fn loop_len(part: &Part) -> Option<f64> {
-    if let Some(l) = part.length {
-        return Some(l);
-    }
-    if let Some(c) = &part.chordal {
-        return Chordal::parse(c).ok().map(|s| s.len() as f64 * part.step.unwrap_or(0.5));
-    }
-    let g = part.grid.as_ref()?;
-    let lens: std::collections::BTreeSet<usize> = g.rows.values().map(|r| r.chars().filter(|c| !matches!(c, ' ' | '|')).count()).filter(|&n| n > 0).collect();
-    (lens.len() == 1).then(|| *lens.first().unwrap() as f64 * g.step.unwrap_or(0.25))
 }
 
 fn shift_pitch(mut n: Note, semitones: i32) -> Option<Note> {
@@ -463,19 +443,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn loop_starts_for_the_view() {
+    fn part_blocks_name_the_part_each_section_uses() {
         let p = project(serde_json::json!({ "tempo": 120,
-            "sections": { "a": { "bars": 1, "chords": "C" }, "b": { "bars": 1, "chords": "F" } },
-            "form": ["a", "b"],
-            "tracks": [
-                { "name": "g", "instrument": "drums.909", "parts": { "*": { "grid": { "kick": "x.." }, "align": "global" } } },
-                { "name": "s", "instrument": "drums.909", "parts": { "*": { "grid": { "kick": "x..", "snare": "..x.x" } } } },
-                { "name": "c", "instrument": "poly.juno_keys", "parts": { "*": { "chordal": "1 5 8", "step": 1 } } }
-            ] }));
-        let l = loop_starts(&p);
-        assert_eq!(l[0], vec![0.75, 1.5, 2.25, 3.0, 3.75, 4.5, 5.25, 6.0, 6.75, 7.5], "全曲 0.75 拍一圈，不在段落起点重置");
-        assert!(l[1].is_empty(), "两行长度不同，没有单一的循环长度");
-        assert_eq!(l[2], vec![3.0, 7.0], "每段从头数，3 拍一圈");
+            "sections": { "a": { "bars": 1 }, "b": { "bars": 2 } },
+            "form": ["a", "b", "a", { "section": "b", "mute": ["k"] }],
+            "tracks": [{ "name": "k", "instrument": "drums.909", "parts": {
+                "*": { "grid": { "kick": "x..." } }, "a#2": { "grid": { "snare": "x..." } } } }] }));
+        let b = part_blocks(&p);
+        assert_eq!(b[0], vec![(0.0, 4.0, "*".to_string()), (4.0, 8.0, "*".into()), (12.0, 4.0, "a#2".into())]);
     }
 
     #[test]
