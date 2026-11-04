@@ -78,6 +78,15 @@ muser 开源、完全免费。《电子羊》四部曲的每一首，都是 agen
 - **逐音弯音**（`"bend"`：吉他推弦、滑进音、尾音下滑，各自占一个 MIDI 通道）与**效果器旁通**（`"bypass": true`，`muser view` 里点效果器切换）
 - `muser play`：用声卡把工程放一遍就退出，配合"先听后写"的草稿流程
 - 两种 AI 接口：**CLI**（shell 调用）和 **MCP server**（agent 直接工具调用）
+- **自己录人声**：在 `muser view` 里跟着伴奏录一句或一段循环区间（预备拍、测延迟），每一遍都留着、随时换；剪刀剪开、拖动、方向键微调；
+  工程的歌词在屏幕底部按卡拉 OK 逐字高亮。`muser takes --timing` 告诉 agent 哪一句早了、晚了
+- **按歌词哼唱**：`choir.*` 的音符可以带音节（`"lyric"`，或 ABC 的 `w:` 行），人声唱音节里的元音
+- **一处改调**：`"transpose": 3`（或 view 里的「变调 − / +」）整首移调，音符不改
+- **段落各有拍号**（主歌 4/4、桥段 7/8……）与**跨段落不重置的循环**（`"align": "global"`，做 polymeter）
+- **交给 DAW**：`muser export-daw` 一次写出 MIDI、24 位分轨、混音和导入说明（Live、Cubase、Logic、FL Studio 等）；
+  只要分轨用 `render --stems`；`render -o song.mp3` 直接出 MP3；WAV 里带段落标记
+- **给可视化的数据**：`muser export-data` 把音符、段落、自动化曲线、音量包络写成 JSON
+- **一行安装与更新**（`scripts/install.sh`、`install.ps1`、`muser self-update`），**`muser migrate`** 把旧版本写的工程换算过来
 
 ## 快速上手
 
@@ -245,6 +254,21 @@ muser loop hum hum.wav --tempo 96 --name hook     # 哼唱 / 口哨录音转成�
 # poly 合成器音色编辑器（本地网页）与本机音色库
 muser poly edit --open
 muser poly show my_reese          # 写进音轨的 JSON，完整音色内嵌
+
+# 交给别的软件：给 DAW 的文件夹（MIDI、分轨、混音、IMPORT.md）、只要分轨、MP3、给可视化的数据
+muser export-daw song.muser.json -o song-daw
+muser render song.muser.json --stems stems/
+muser render song.muser.json -o song.mp3
+muser export-data song.muser.json -o song.json --fps 30
+
+# 录好的人声：列出每一遍、对照引导旋律检查节奏、剪开 / 微调片段
+muser takes song.muser.json --timing
+muser clip split song.muser.json --track vocal --at 32
+muser clip move song.muser.json --track vocal --clip 3 --by-ms -40
+
+# 升级：更新 muser、换算旧工程
+muser self-update
+muser migrate old.muser.json --from 0.3.0 --write
 ```
 
 > 开发期也可用 `cargo run -p muser-cli -- <子命令>` 免安装直接跑。

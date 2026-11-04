@@ -16,7 +16,8 @@ muser 的接口层以两种形态暴露给 AI：
 ### `muser render <project> [options]`
 读工程 JSON，离线渲染为 WAV。
 - `<project>`：工程文件路径（`.json`）
-- `-o, --output <path>`：输出 WAV 路径（默认 `out.wav`）
+- `-o, --output <path>`：输出路径（默认 `out.wav`）；以 `.mp3` 结尾时直接写 MP3（320 kbit/s）。WAV 里带每个段落起点的标记（cue point）
+- `--stems <dir>`：分轨导出代替整首：每条没静音的音轨一个 24 位 WAV（带效果器与发送，不带主总线效果器，各轨同长）
 - `--sample-rate <hz>`：采样率（默认 48000）
 - `--tail <seconds>`：结尾余响秒数（默认 2.0）
 - `--seed <n>`：临时换工程的随机种子（不改文件）：`humanize` 与 random 自动化换一遍
@@ -100,7 +101,10 @@ muser render beat.muser.json -o beat.wav
 - 改音量、静音、独奏：交给引擎重新渲染（乐器输出有缓存，只重跑效果、总线、主总线；2 分钟的 15 轨曲子约 1.7 秒），
   新版本从当前播放位置无缝换上，结果是准确的。独奏只用于试听，不写进工程。
 - 有音量自动化（`gain_db`）的轨：自动化是绝对 dB，推子改动会把它整体平移同样的量（trim），保存时一并写回。
-- 「保存到工程文件」只写回改过的 `gain_db` / `muted`；「撤销改动」回到文件里的值；「复制改动 JSON」交给 AI。
+- 「保存到工程文件」只写回页面上改过的东西（推子、静音、效果器旁通、录音、剪开 / 挪动的音频片段、整首变调）；「撤销改动」回到文件里的值；「复制改动 JSON」交给 AI。
+- **录人声**（右边面板）：从播放头或循环区间录，预备拍、延迟微调、「测延迟」；每一遍存在 `recordings/<轨名>-take-NN.wav`（清单 `recordings/takes.json`），
+  贴到音频轨上（待保存）；列表里「用这一遍」「删除」。工程的 `lyrics` 在屏幕底部按卡拉 OK 显示（「歌词」开关）。
+- **音频片段**：✂（或 C）剪开，拖动挪位置（Shift 对齐 1/16），选中后 ← → 每次 10 毫秒。**变调 − / +**：整首移调（`transpose`）。
 - 工程文件被别人（AI）改了：自动重新渲染、页面刷新（页面上未保存的改动丢弃）。
 - 只监听本机、无鉴权（拒绝非本机 Host/Origin 的请求）。远程机器上用 SSH 端口转发访问。请用 release 构建。
 
@@ -184,6 +188,26 @@ audio 音轨不导出。缺省输出为工程同名的 `.mid`。`muser view` 页
 
 `muser view` 页面的「导出」也能下载 ABC 与 ABC（YuE2）（选项都用缺省）。
 
+### `muser export-daw <project> -o <folder> [--sample-rate 48000] [--tail 2]`
+给 DAW 的文件夹：`<名字>.mid`（全部乐器轨，速度、拍号、段落标记）、`stems/NN-轨名.wav`（24 位，从第 1 小节对齐）、`mix.wav`、
+`IMPORT.md`（Live、Cubase、Logic、FL Studio、Studio One、Bitwig、REAPER、GarageBand、Pro Tools 的导入步骤）。
+
+### `muser export-data <project> [-o data.json] [--fps 30]`
+给可视化的 JSON：每轨音符 `[起点秒, 音高, 力度, 时长秒]`、段落（起止秒、拍号）、音轨与主输出的自动化曲线；`--fps` 再加每帧的整体 / 低频电平（dB）。
+
+### `muser takes <project> [--timing] [--clean]`
+录人声的每一遍：起点、长度、电平、实际唱的部分、工程用了没有。`--timing` 逐句量人声比引导旋律（带 `lyric` 的轨）早 / 晚多少毫秒；
+`--clean` 删掉工程没用到的录音（先问用户）。
+
+### `muser clip split|move <project> --track <轨名> …`
+剪开 / 挪动音频轨上的片段：`split --at <拍>`；`move --clip <序号> --to <拍>` 或 `--by-ms <毫秒>`（负数往前）。只改那条轨的 clips。
+
+### `muser migrate <project…> --from <版本> [--write]`
+把为旧版写的工程换算到当前版本（如 0.3.0 → 当前：内置乐器音量校准）。默认只列改动。
+
+### `muser self-update [--check] [--version vX.Y.Z]`
+用官方安装脚本更新到 GitHub 上的最新版（需要 curl）。
+
 ### `muser new [-o <path>]`
 生成一个示例工程 JSON（AI 可用来参考标准格式）。缺省打印到 stdout。
 
@@ -205,7 +229,7 @@ muser-mcp          # 以 stdio 启动 MCP server（开发期: cargo run -p muser
 stdio server 注册即可。服务器初始化时会返回使用说明（instructions），告诉 agent
 如何用 beats 时间、GM 鼓键、乐器语义名等。
 
-### 已实现的 Tools（38 个）
+### 已实现的 Tools（41 个）
 
 | tool | 作用 |
 |---|---|

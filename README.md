@@ -79,6 +79,13 @@ muser is open source and free. Every piece of the *Electric Sheep* suite was mad
 - **Per-note pitch bend** (`"bend"`: guitar bends, scoops, falls, on their own MIDI channel) and **effect bypass** (`"bypass": true`, toggled by clicking the effect in `muser view`)
 - `muser play`: play a project through the sound card and exit — quick listening for the sketch-first workflow
 - Two AI interfaces: **CLI** (shell calls) and **MCP server** (direct tool calls from the agent)
+- **Record your own voice** in `muser view`: record a phrase or a loop range over the backing (count-in, latency measurement), keep every take, swap takes, cut clips with scissors, drag and nudge them; the project's lyrics run as karaoke at the bottom of the screen. `muser takes --timing` tells an agent which phrase is early or late
+- **Hum lyrics**: notes on `choir.*` can carry syllables (`"lyric"`, or ABC `w:` lines); the voice sings their vowels
+- **Change key in one place**: `"transpose": 3` (or the Key − / + control in `muser view`) moves every pitched track without touching the notes
+- **A time signature per section** (`4/4` verse, `7/8` bridge…) and **loops that run across sections** (`"align": "global"`) for polymeters
+- **Hand-off to a DAW**: `muser export-daw` writes MIDI, 24-bit stems, the mix and an import guide for Live, Cubase, Logic, FL Studio and others; `render --stems` for stems only; `render -o song.mp3` for MP3; WAV files carry section markers
+- **Data for visuals**: `muser export-data` writes notes, sections, automation curves and loudness envelopes as JSON
+- **Install and update in one line** (`scripts/install.sh`, `install.ps1`, `muser self-update`) and **`muser migrate`** for projects written for an older muser
 
 ## Quick start
 
@@ -248,6 +255,21 @@ muser loop hum hum.wav --tempo 96 --name hook     # hummed / whistled recording 
 # Poly-synth sound editor (local web page) and your sound library
 muser poly edit --open
 muser poly show my_reese          # the track JSON with the full sound embedded
+
+# Hand-off: a folder for any DAW (MIDI, stems, mix, IMPORT.md), stems only, MP3, data for visuals
+muser export-daw song.muser.json -o song-daw
+muser render song.muser.json --stems stems/
+muser render song.muser.json -o song.mp3
+muser export-data song.muser.json -o song.json --fps 30
+
+# Recorded vocals: list takes, check timing against the guide melody, cut / nudge clips
+muser takes song.muser.json --timing
+muser clip split song.muser.json --track vocal --at 32
+muser clip move song.muser.json --track vocal --clip 3 --by-ms -40
+
+# Upgrade: update muser, convert an older project
+muser self-update
+muser migrate old.muser.json --from 0.3.0 --write
 ```
 
 > During development you can also run `cargo run -p muser-cli -- <subcommand>` without installing.
