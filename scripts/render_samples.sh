@@ -18,7 +18,7 @@ GROUP="${1:-}"
 cd "$ROOT"
 
 if [ ! -x "$MUSER" ]; then
-  echo "找不到 muser 二进制：$MUSER（先 cargo build -p muser-cli，或设置 MUSER）" >&2
+  echo "找不到 muser 二进制：${MUSER}（先 cargo build -p muser-cli，或设置 MUSER）" >&2
   exit 1
 fi
 
@@ -37,7 +37,7 @@ PY
   then
     echo "state $r"
   else
-    echo "FAIL  $r（生成状态文件失败，依赖它的工程会失败）"
+    echo "FAIL  ${r}（生成状态文件失败，依赖它的工程会失败）"
   fi
 done
 
