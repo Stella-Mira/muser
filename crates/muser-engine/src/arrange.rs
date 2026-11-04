@@ -488,6 +488,26 @@ mod tests {
     use super::*;
 
     #[test]
+    fn project_transpose_moves_pitched_tracks_only() {
+        let mut p = project(serde_json::json!({ "tempo": 120,
+            "sections": { "a": { "bars": 1, "chords": "C" } }, "form": ["a"],
+            "tracks": [
+                { "name": "keys", "instrument": "poly.juno_keys", "parts": { "a": { "chordal": "1", "step": 4 } } },
+                { "name": "k", "instrument": "drums.909", "clips": [{ "start": 0, "length": 4, "grid": { "kick": "x..." } }] } ] }));
+        let pitches = |p: &Project| -> Vec<Vec<u8>> {
+            let a = arranged(p).unwrap();
+            (0..a.tracks.len()).map(|ti| (0..a.tracks[ti].clips.len()).flat_map(|ci| crate::clip_notes(&a, ti, ci).unwrap()).map(|n| n.pitch).collect()).collect()
+        };
+        let before = pitches(&p);
+        p.transpose = 3;
+        let after = pitches(&p);
+        assert_eq!(after[0], before[0].iter().map(|x| x + 3).collect::<Vec<_>>(), "和弦音一起移");
+        assert_eq!(after[1], before[1], "鼓不动");
+        p.transpose = 30;
+        assert!(p.validate().is_err());
+    }
+
+    #[test]
     fn part_blocks_name_the_part_each_section_uses() {
         let p = project(serde_json::json!({ "tempo": 120,
             "sections": { "a": { "bars": 1 }, "b": { "bars": 2 } },

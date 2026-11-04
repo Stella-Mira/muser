@@ -62,6 +62,10 @@ pub struct Project {
     /// 随机种子：没有写 `seed` 的 random 自动化由它推导。换一个就换一种随机变化。默认 0。
     #[serde(default, skip_serializing_if = "is_zero")]
     pub seed: u64,
+    /// 整首变调（半音，−24 到 24）：所有有音高的乐器音轨演奏时都移这么多，音符本身不改；鼓组（`drums.*`）与音频轨不动。
+    /// 换一个人唱（比如换成女声）时用它找合适的调。
+    #[serde(default, skip_serializing_if = "is_zero_i32")]
+    pub transpose: i32,
     /// 总线（可省略）：汇集音轨/总线的信号统一处理，如共用混响、鼓组压缩。见 [`routing`]。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub buses: Vec<Bus>,
@@ -97,6 +101,7 @@ impl Project {
             automation: Vec::new(),
             tuning: None,
             seed: 0,
+            transpose: 0,
             buses: Vec::new(),
             tracks: Vec::new(),
             sections: Default::default(),
@@ -164,6 +169,9 @@ impl Project {
 
     /// 基本校验：tempo 为正、clip 时间非负等。
     pub fn validate(&self) -> Result<(), CoreError> {
+        if !(-24..=24).contains(&self.transpose) {
+            return Err(CoreError::Invalid(format!("transpose = {}：整首变调在 −24 到 24 个半音之间", self.transpose)));
+        }
         if !(self.tempo > 0.0) {
             return Err(CoreError::Invalid(format!(
                 "tempo 必须为正数，实际为 {}",
@@ -571,6 +579,10 @@ pub struct Note {
 }
 
 fn is_zero(v: &u64) -> bool {
+    *v == 0
+}
+
+fn is_zero_i32(v: &i32) -> bool {
     *v == 0
 }
 

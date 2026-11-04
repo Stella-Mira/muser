@@ -175,6 +175,9 @@
   #kara-now span.done { color: var(--accent); }
   #kara-now span.now { color: transparent; }
   .cut-button { margin-right: 10px; padding: 4px 10px; }
+  .key-shift { display: inline-flex; align-items: center; gap: 4px; margin-right: 12px; }
+  .key-shift button { padding: 2px 8px; min-width: 26px; }
+  .key-shift b { min-width: 28px; text-align: center; font-variant-numeric: tabular-nums; }
   .cut-button[aria-pressed="true"] { background: #ffc46b; border-color: #ffc46b; color: #1a1205; }
   canvas.track-notes.cutting { cursor: crosshair; }
   canvas.track-notes.over-audio { cursor: grab; }
@@ -363,6 +366,8 @@
       <div class="transport-options">
         <label class="hint kara-toggle"><input type="checkbox" id="kara-on" checked> <span data-i18n="karaoke">Lyrics</span></label>
         <button id="cut-mode" class="cut-button" data-title="cutHint" aria-pressed="false">✂</button>
+        <span class="key-shift" data-title="keyHint"><span class="hint" data-i18n="keyShift">Key</span>
+          <button id="key-down" aria-label="-1">−</button><b id="key-value">0</b><button id="key-up" aria-label="+1">+</button></span>
         <div class="loop-control">
           <label class="inline"><input type="checkbox" id="loop"> <span data-i18n="loop">Loop</span></label>
           <span id="loop-range" class="loop-range">Full song</span>
@@ -484,6 +489,8 @@ const I18N = {
     gainChange: (v) => `gain_db → ${v}`, muteChange: (v) => `muted → ${v}`,
     bypassChange: (b) => `bypass → [${b.map((x) => (x ? "off" : "on")).join(", ")}]`, fxBypassed: "bypassed (click to turn on)", fxActive: "on (click to bypass)",
     export: "Export", exportNote: "Current mix, including page changes", exportWav: "Mix (WAV)", exportMidi: "MIDI",
+    keyShift: "Key", keyHint: "Transpose the whole song in semitones while you try keys for a singer (notes in the project stay as written; drums and recordings don't move). Save keeps it",
+    transposeChange: (n) => `transpose → ${n > 0 ? "+" : ""}${n}`,
     karaoke: "Lyrics", cutHint: "Scissors: click an audio clip to cut it there (C). Drag an audio clip to move it (Shift snaps to 1/16 notes); click one to select it, then ← → nudge it 10 ms (Shift: 1/16 note)",
     recMeasure: "Measure latency", recMeasureHint: "Take off the headphones and turn the volume up: muser plays 8 clicks and listens for them through the microphone, then fills in the latency",
     recMeasuring: "Listening for the clicks… keep quiet", recMeasured: (ms) => `Round trip measured; latency set to ${ms} ms`, recMeasureFailed: "Couldn't hear the clicks: take off the headphones, turn the volume up and try again",
@@ -543,6 +550,8 @@ const I18N = {
     gainChange: (v) => `gain_db → ${v}`, muteChange: (v) => `muted → ${v}`,
     bypassChange: (b) => `效果器 → [${b.map((x) => (x ? "旁通" : "开")).join("，")}]`, fxBypassed: "已旁通（点一下打开）", fxActive: "开着（点一下旁通）",
     export: "导出", exportNote: "当前混音，含页面上的改动", exportWav: "整首混音（WAV）", exportMidi: "MIDI",
+    keyShift: "变调", keyHint: "整首升降几个半音，给换了人唱（比如换成女声）找合适的调；工程里的音符不改，鼓和录音不动。点「保存」才写进工程",
+    transposeChange: (n) => `整首变调 → ${n > 0 ? "+" : ""}${n} 个半音`,
     karaoke: "歌词", cutHint: "剪刀：点音频片段，在那里剪开（快捷键 C）。拖动音频片段挪位置（按住 Shift 对齐 1/16 音符）；点一下选中，再按 ← → 每次微调 10 毫秒（Shift：1/16 音符）",
     recMeasure: "测延迟", recMeasureHint: "摘下耳机、把音量开大：muser 放 8 下咔嗒声，用麦克风听回来，自动填好延迟微调",
     recMeasuring: "正在听咔嗒声……请保持安静", recMeasured: (ms) => `测好了：延迟微调设为 ${ms} 毫秒`, recMeasureFailed: "没听到咔嗒声：摘下耳机、把音量开大再试一次",
@@ -815,6 +824,7 @@ async function refresh() {
     // 同一版本还在渲染：只补上波形与电平。
     data.peaks = st.peaks; data.meters = st.meters; data.rendered = st.rendered; data.render_seconds = st.render_seconds;
     data.takes = st.takes; data.takes_pending = st.takes_pending; data.changes = st.changes; data.lyrics = st.lyrics; data.clip_edits = st.clip_edits;
+    data.transpose = st.transpose; data.transpose_pending = st.transpose_pending;
     decodeMeters(); renderHeader(); renderChanges(); drawTimeline();
     return;
   }
@@ -1359,10 +1369,12 @@ function renderFlow() {
 }
 function renderChanges() {
   const list = data.changes, pending = data.takes_pending || [], edits = data.clip_edits || [];
-  const any = list.length + pending.length + edits.length > 0;
+  const tr = data.transpose_pending == null ? [] : [t("transposeChange", data.transpose_pending)];
+  const any = list.length + pending.length + edits.length + tr.length > 0;
+  $("key-value").textContent = (data.transpose > 0 ? "+" : "") + (data.transpose || 0);
   $("changes-empty").hidden = any; $("changes").hidden = !any;
   const name = (id) => (data.nodes.find((n) => n.id === id) || {}).name || id;
-  $("changes").textContent = pending.map((tk) => t("takePending", tk.file.split("/").pop(), barOf(tk.start))).concat(edits, list.map((c) => {
+  $("changes").textContent = pending.map((tk) => t("takePending", tk.file.split("/").pop(), barOf(tk.start))).concat(tr, edits, list.map((c) => {
     const parts = [];
     if ("gain_db" in c) parts.push(t("gainChange", c.gain_db));
     if ("muted" in c) parts.push(t("muteChange", c.muted));
@@ -1380,6 +1392,9 @@ function setCutting(on) {
   document.querySelectorAll("canvas.track-notes").forEach((c) => c.classList.toggle("cutting", on));
 }
 $("cut-mode").onclick = () => setCutting(!cutting);
+const shiftKey = (d) => post("/api/transpose", { semitones: Math.max(-24, Math.min(24, (data.transpose || 0) + d)) }).then(refresh).catch(() => {});
+$("key-down").onclick = () => shiftKey(-1);
+$("key-up").onclick = () => shiftKey(1);
 document.addEventListener("keydown", (e) => {
   if (e.target.closest("input, select, textarea")) return;
   if (e.key === "c" || e.key === "C") setCutting(!cutting);

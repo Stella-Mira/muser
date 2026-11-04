@@ -764,7 +764,8 @@ impl Shared {
         let mut st = self.state.lock().unwrap();
         let (Some(file), Some(working)) = (&st.file, &st.working) else { return Err("工程尚未成功加载".into()) };
         let changes = diff(file, working);
-        if changes.is_empty() && st.takes.is_empty() && st.clip_dirty.is_empty() {
+        let transpose = (file.transpose != working.transpose).then_some(working.transpose);
+        if changes.is_empty() && st.takes.is_empty() && st.clip_dirty.is_empty() && transpose.is_none() {
             return Ok(0);
         }
         let takes = st.takes.clone();
@@ -781,6 +782,13 @@ impl Shared {
             apply_to_json(&mut v, &changes, working)?;
             for t in &takes {
                 crate::takes::place_json(&mut v, t, working.tempo)?;
+            }
+            if let (Some(n), Some(o)) = (transpose, v.as_object_mut()) {
+                if n == 0 {
+                    o.remove("transpose");
+                } else {
+                    o.insert("transpose".into(), json!(n));
+                }
             }
             for (name, clips) in &edited {
                 let t = v
@@ -800,7 +808,7 @@ impl Shared {
         st.clip_edits.clear();
         // 自己写的文件不触发重新加载。
         st.file_mtime = mtime(&self.path);
-        let n = changes.len() + takes.len() + n_edits;
+        let n = changes.len() + takes.len() + n_edits + usize::from(transpose.is_some());
         eprintln!("[view] 已保存 {n} 项改动到 {}", self.path.display());
         Ok(n)
     }
@@ -1170,6 +1178,17 @@ impl Shared {
         Ok(())
     }
 
+    /// 整首变调（待保存）。
+    fn set_transpose(&self, semitones: i64) -> Result<(), String> {
+        if !(-24..=24).contains(&semitones) {
+            return Err("变调在 −24 到 24 个半音之间".into());
+        }
+        let mut st = self.state.lock().unwrap();
+        st.working.as_mut().ok_or("工程尚未成功加载")?.transpose = semitones as i32;
+        self.request_render(&mut st);
+        Ok(())
+    }
+
     /// 剪开或挪动音频轨上的一个片段（待保存）：`split` 在第几拍剪成两段，`start` 把片段挪到第几拍。
     fn edit_clip(&self, body: &Value) -> Result<(), String> {
         let num = |k: &str| body.get(k).and_then(Value::as_f64);
@@ -1268,6 +1287,11 @@ impl Shared {
         out["changes"] = json!(changes);
         out["takes_pending"] = json!(st.takes);
         out["clip_edits"] = json!(st.clip_edits);
+        out["transpose"] = json!(st.working.as_ref().map_or(0, |w| w.transpose));
+        out["transpose_pending"] = json!(match (&st.file, &st.working) {
+            (Some(f), Some(w)) if f.transpose != w.transpose => Some(w.transpose),
+            _ => None,
+        });
         let used = |p: &Option<Project>, f: &str| p.as_ref().is_some_and(|w| crate::takes::referenced(w, f));
         out["takes"] = json!(crate::takes::list(&self.path)
             .iter()
@@ -1480,6 +1504,13 @@ fn handle(shared: &Arc<Shared>, mut req: tiny_http::Request, port: u16) {
             }
             match shared.record(&track, start, &body) {
                 Ok(t) => respond_json(req, 200, &json!({ "ok": true, "take": t })),
+                Err(e) => respond_json(req, 400, &json!({ "error": e })),
+            }
+        }
+        (Method::Post, "/api/transpose") => {
+            let r = read_body::<Value>(&mut req).and_then(|b| b.get("semitones").and_then(Value::as_i64).ok_or_else(|| "要 semitones".to_string())).and_then(|n| shared.set_transpose(n));
+            match r {
+                Ok(()) => respond_json(req, 200, &json!({ "ok": true })),
                 Err(e) => respond_json(req, 400, &json!({ "error": e })),
             }
         }

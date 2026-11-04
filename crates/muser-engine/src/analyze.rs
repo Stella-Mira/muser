@@ -115,7 +115,13 @@ fn round2(x: f64) -> f64 {
 pub fn analyze(project: &Project, audio: bool, settings: RenderSettings) -> Result<Report, EngineError> {
     crate::validate_score(project)?;
     let invalid = |m: String| EngineError::Core(muser_core::CoreError::Invalid(m));
-    let spans = crate::arrange::timeline(project).map_err(invalid)?;
+    let mut spans = crate::arrange::timeline(project).map_err(invalid)?;
+    // 整首变调：写在段落上的和弦也跟着移，和移过调的音对得上。
+    for s in &mut spans {
+        for c in &mut s.chords {
+            c.chord = c.chord.transposed(project.transpose);
+        }
+    }
     let arranged = crate::arrange::arranged(project).map_err(invalid)?;
     let p = &*arranged;
     let map = p.bar_map();

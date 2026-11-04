@@ -66,6 +66,7 @@ Windows：`irm https://raw.githubusercontent.com/claw-works/muser/main/scripts/i
 | 本机音色库里的 poly 音色 | `muser poly list`、`muser poly show <名字>` | — |
 | 音频文件的格式、时长（换算成拍） | `muser audio <文件> [--tempo T]` | — |
 | 把编曲交给 DAW / 分析工具 | `muser midi <工程> [-o x.mid]` | `export_midi` |
+| 整首换调（换人唱、找合适的音域） | 工程写 `"transpose": N`（半音，音符不改，鼓和音频轨不动）；view 播放条上有「变调 − / +」 | — |
 | 用户想自己唱 / 录人声（流程见 [skills/recording.md](skills/recording.md)） | `muser view <工程> --open`，右边"录人声"面板（工程写 `lyrics` 会显示歌词）；录完 `muser takes <工程>` 看每一遍，改音频片段的 `offset` / `start` / `length` / `fade_in` / `fade_out` 剪辑对齐（用户也可以在 view 里用 ✂ 剪开、拖动挪位置、← → 微调） | — |
 | 交给 DAW（Live / Cubase / Logic）接着做：MIDI + 分轨 + 混音 + 导入说明 | `muser export-daw <工程> -o <文件夹>` | `export_daw` |
 | 只要分轨（每轨一个 WAV） | `muser render <工程> --stems <目录>` | `export_stems` |

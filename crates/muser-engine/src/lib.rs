@@ -97,6 +97,14 @@ pub fn clip_notes(project: &muser_core::Project, ti: usize, ci: usize) -> Result
         let drums = track.instrument.trim().starts_with("drums.");
         arrange::apply(&clip.transform, &mut notes, &mut clip.length.0.clone(), 0, &[], drums, seed);
     }
+    // 整首变调：有音高的轨演奏时移调（鼓组不动）。
+    if project.transpose != 0 && !track.instrument.trim().starts_with("drums.") {
+        notes.retain_mut(|n| {
+            let p = i32::from(n.pitch) + project.transpose;
+            n.pitch = p.clamp(0, 127) as u8;
+            (0..=127).contains(&p)
+        });
+    }
     Ok(notes)
 }
 

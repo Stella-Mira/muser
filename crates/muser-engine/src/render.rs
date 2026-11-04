@@ -677,7 +677,7 @@ fn instrument_key(project: &Project, ti: usize, cx: &Ctx) -> u64 {
     let ts = project.time_signature;
     let key = serde_json::json!({ "am": audio_mtimes,
         "i": t.instrument, "p": t.instrument_params, "c": t.clips, "h": t.humanize, "a": autos.iter().map(|(i, a)| serde_json::json!([i, a])).collect::<Vec<_>>(),
-        "ti": ti, "seed": project.seed, "tempo": project.tempo, "tu": project.tuning, "ts": [ts.numerator, ts.denominator],
+        "ti": ti, "seed": project.seed, "tempo": project.tempo, "tu": project.tuning, "tr": project.transpose, "ts": [ts.numerator, ts.denominator],
         "sr": cx.settings.sample_rate, "bs": cx.settings.block_size, "n": cx.total_frames, "st": state_mtime,
     });
     let mut h = std::collections::hash_map::DefaultHasher::new();
